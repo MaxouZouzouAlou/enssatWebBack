@@ -20,7 +20,6 @@ CREATE TABLE SuperAdmin (
 -- -------------------------------------------------------------
 CREATE TABLE Utilisateur (
     id               INT          PRIMARY KEY AUTO_INCREMENT,
-    mdp              VARCHAR(255) NOT NULL,
     type_utilisateur VARCHAR(50)  NOT NULL,
     nom              VARCHAR(100) NOT NULL,
     prenom           VARCHAR(100) NOT NULL,
@@ -488,17 +487,17 @@ INSERT INTO SuperAdmin (idAdmin) VALUES
 -- -------------------------------------------------------------
 -- 2. Utilisateur
 -- -------------------------------------------------------------
-INSERT INTO Utilisateur (id, mdp, type_utilisateur, nom, prenom, email, num_telephone, adresse_ligne, code_postal, ville, idAdmin) VALUES
-(1,  '$2b$12$hashed_password_1', 'superadmin',    'Dupont',    'Alice',     'alice.dupont@localzh.fr',       '0600000001', '1 Rue de l\'Admin',      '35000', 'Rennes',     1),
-(2,  '$2b$12$hashed_password_2', 'superadmin',    'Martin',    'Bernard',   'bernard.martin@localzh.fr',    '0600000002', '2 Rue de l\'Admin',      '35000', 'Rennes',     2),
-(3,  '$2b$12$hashed_password_3', 'professionnel', 'Leroy',     'Claire',    'claire.leroy@ferme-leroy.fr',  '0611223344', '12 Rue des Champs',      '35000', 'Rennes',     NULL),
-(4,  '$2b$12$hashed_password_4', 'professionnel', 'Moreau',    'David',     'david.moreau@boulangerie-moreau.fr', '0622334455', '5 Place du Marché', '35200', 'Rennes', NULL),
-(5,  '$2b$12$hashed_password_5', 'professionnel', 'Simon',     'Emma',      'emma.simon@maraichere-simon.fr','0633445566', '8 Allée des Jardins',    '35700', 'Rennes',     NULL),
-(6,  '$2b$12$hashed_password_6', 'particulier',   'Laurent',   'François',  'francois.laurent@email.fr',    '0655667788', '14 Rue du Bois',         '35000', 'Rennes',     NULL),
-(7,  '$2b$12$hashed_password_7', 'particulier',   'Thomas',    'Gabrielle', 'gabrielle.thomas@email.fr',    '0666778899', '22 Avenue de la Paix',   '35200', 'Rennes',     NULL),
-(8,  '$2b$12$hashed_password_8', 'particulier',   'Richard',   'Hugo',      'hugo.richard@email.fr',        '0677889900', '7 Boulevard du Port',   '35400', 'Saint-Malo', NULL),
-(9,  '$2b$12$hashed_password_9', 'particulier',   'Petit',     'Isabelle',  'isabelle.petit@email.fr',      '0688990011', '33 Chemin des Lilas',   '35700', 'Rennes',     NULL),
-(10, '$2b$12$hashed_password_0', 'professionnel', 'Girard',    'Julien',    'julien.girard@fromagerie-girard.fr', '0644556677', '3 Impasse du Moulin', '35800', 'Dinard', NULL);
+INSERT INTO Utilisateur (id, type_utilisateur, nom, prenom, email, num_telephone, adresse_ligne, code_postal, ville, idAdmin) VALUES
+(1,  'superadmin',    'Dupont',    'Alice',     'alice.dupont@localzh.fr',       '0600000001', '1 Rue de l\'Admin',      '35000', 'Rennes',     1),
+(2,  'superadmin',    'Martin',    'Bernard',   'bernard.martin@localzh.fr',    '0600000002', '2 Rue de l\'Admin',      '35000', 'Rennes',     2),
+(3,  'professionnel', 'Leroy',     'Claire',    'claire.leroy@ferme-leroy.fr',  '0611223344', '12 Rue des Champs',      '35000', 'Rennes',     NULL),
+(4,  'professionnel', 'Moreau',    'David',     'david.moreau@boulangerie-moreau.fr', '0622334455', '5 Place du Marché', '35200', 'Rennes', NULL),
+(5,  'professionnel', 'Simon',     'Emma',      'emma.simon@maraichere-simon.fr','0633445566', '8 Allée des Jardins',    '35700', 'Rennes',     NULL),
+(6,  'particulier',   'Laurent',   'François',  'francois.laurent@email.fr',    '0655667788', '14 Rue du Bois',         '35000', 'Rennes',     NULL),
+(7,  'particulier',   'Thomas',    'Gabrielle', 'gabrielle.thomas@email.fr',    '0666778899', '22 Avenue de la Paix',   '35200', 'Rennes',     NULL),
+(8,  'particulier',   'Richard',   'Hugo',      'hugo.richard@email.fr',        '0677889900', '7 Boulevard du Port',   '35400', 'Saint-Malo', NULL),
+(9,  'particulier',   'Petit',     'Isabelle',  'isabelle.petit@email.fr',      '0688990011', '33 Chemin des Lilas',   '35700', 'Rennes',     NULL),
+(10, 'professionnel', 'Girard',    'Julien',    'julien.girard@fromagerie-girard.fr', '0644556677', '3 Impasse du Moulin', '35800', 'Dinard', NULL);
 
 -- -------------------------------------------------------------
 -- 3. Professionnel
