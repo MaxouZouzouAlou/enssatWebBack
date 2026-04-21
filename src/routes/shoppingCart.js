@@ -4,12 +4,12 @@ const pool = require('../server_config/db.js');
 
 /**
  * @openapi
- * /shoppingList:
+ * /shoppingCart:
  *   get:
- *     summary: Get shopping lists
+ *     summary: Get shopping carts
  *     responses:
  *       200:
- *         description: List of shopping list objects
+ *         description: List of shopping cart objects
  *         content:
  *           application/json:
  *             schema:
@@ -35,12 +35,12 @@ router.get('/', async (req, res, next) => {
 
 /**
  * @openapi
- * /shoppingList/:id:
+ * /shoppingCart/:id:
  *   get:
- *     summary: Get a shopping list specified by ID
+ *     summary: Get a shopping cart specified by ID
  *     responses:
  *       200:
- *         description: Shopping list object
+ *         description: Shopping cart object
  *         content:
  *           application/json:
  *             schema:
@@ -67,12 +67,12 @@ router.get('/:id', async (req, res, next) => {
 
 /**
  * @openapi
- * /shoppingList/:id/items:
+ * /shoppingCart/:id/items:
  *   get:
- *     summary: Get items of a shopping list specified by id
+ *     summary: Get items of a shopping cart specified by id
  *     responses:
  *       200:
- *         description: List of items from a shopping list
+ *         description: List of items from a shopping cart
  *         content:
  *           application/json:
  *             schema:
@@ -90,13 +90,14 @@ router.get('/:id', async (req, res, next) => {
  */
 router.get('/:id/items', async (req, res, next) => {
     try {
-        // Gets all the products linked to the given list ID
-        const [rows] = await pool.query(`SELECT * FROM Panier_Produit WHERE idPanier=${req.params.id}`);
-        const items = [];
+        // Gets all the products linked to the given list ID (parameterized)
+        const [rows] = await pool.query('SELECT * FROM Panier_Produit WHERE idPanier = ?', [req.params.id]);
 
-        rows.forEach((idPanier, idProduit, quantite) => {
-            items.push(await pool.query(`SELECT * FROM Produit WHERE idProduit=${idProduit}`))
-        });
+        // Fetch each product row in parallel and return the product objects
+        const items = await Promise.all(rows.map(async (r) => {
+            const [prodRows] = await pool.query('SELECT * FROM Produit WHERE idProduit = ?', [r.idProduit]);
+            return prodRows[0] || null;
+        }));
 
         res.json(items);
     }
@@ -106,12 +107,12 @@ router.get('/:id/items', async (req, res, next) => {
 
 /**
  * @openapi
- * /shoppingList/individual:
+ * /shoppingCart/individual:
  *   get:
- *     summary: Get shopping lists of individuals
+ *     summary: Get shopping carts of individuals
  *     responses:
  *       200:
- *         description: List of shopping lists of individuals
+ *         description: List of shopping carts of individuals
  *         content:
  *           application/json:
  *             schema:
@@ -137,12 +138,12 @@ router.get('/individual', async (req, res, next) => {
 
 /**
  * @openapi
- * /shoppingList/individual/:id:
+ * /shoppingCart/individual/:id:
  *   get:
- *     summary: Get shopping lists of an individual specified by ID
+ *     summary: Get shopping carts of an individual specified by ID
  *     responses:
  *       200:
- *         description: List of shopping lists from an individual
+ *         description: List of shopping carts from an individual
  *         content:
  *           application/json:
  *             schema:
@@ -168,12 +169,12 @@ router.get('/individual/:id', async (req, res, next) => {
 
 /**
  * @openapi
- * /shoppingList/professional:
+ * /shoppingCart/professional:
  *   get:
- *     summary: Get shopping lists of professionals
+ *     summary: Get shopping carts of professionals
  *     responses:
  *       200:
- *         description: List of shopping lists of professionals
+ *         description: List of shopping carts of professionals
  *         content:
  *           application/json:
  *             schema:
@@ -199,12 +200,12 @@ router.get('/professional', async (req, res, next) => {
 
 /**
  * @openapi
- * /shoppingList/professional/:id:
+ * /shoppingCart/professional/:id:
  *   get:
- *     summary: Get shopping lists of a professional specified by ID
+ *     summary: Get shopping carts of a professional specified by ID
  *     responses:
  *       200:
- *         description: List of shopping lists from a professional
+ *         description: List of shopping carts from a professional
  *         content:
  *           application/json:
  *             schema:
@@ -230,9 +231,9 @@ router.get('/professional/:id', async (req, res, next) => {
 
 /**
  * @openapi
- * /shoppingList:
+ * /shoppingCart:
  *   post:
- *     summary: Create a shopping list
+ *     summary: Create a shopping cart
  *     requestBody:
  *       required: true
  *       content:
@@ -293,9 +294,9 @@ router.post('/', async (req, res, next) => {
 
 /**
  * @openapi
- * /shoppingList:
+ * /shoppingCart/item:
  *   post:
- *     summary: Create a shopping list
+ *     summary: Create a shopping cart item
  *     requestBody:
  *       required: true
  *       content:
@@ -311,7 +312,7 @@ router.post('/', async (req, res, next) => {
  *                 type: int
  *     responses:
  *       201:
- *         description: Created shopping list
+ *         description: Created shopping cart item
  */
 router.post('/item', async (req, res, next) => {
     try {
@@ -321,7 +322,7 @@ router.post('/item', async (req, res, next) => {
         const error = false;
         if (!idPanier) {
             error = true;
-            errorMsg += "Shopping list ID is required. "
+            errorMsg += "Shopping cart ID is required. "
         }
         if (!idProduit) {
             error = true;
@@ -333,11 +334,11 @@ router.post('/item', async (req, res, next) => {
         if (prod[0].stock == 0) return res.status(409).json({ error: 'This product is out of stock.' });
         
         const [check] = await pool.execute('SELECT * FROM Panier_Produit WHERE idPanier = ? AND idProduit = ?', [idPanier, idProduit]);
-        // If the product is already in the shopping list, increase quantity by 1
+        // If the product is already in the shopping cart, increase quantity by 1
         if (check.length > 0) {
             const [result] = await pool.execute('INSERT INTO Panier_Produit (idPanier, idProduit, quantite) VALUES (?, ?, ?)', [idPanier, idProduit, check[0].quantite + 1]);
         }
-        // Else, insert the product into the shopping list with quantity 1
+        // Else, insert the product into the shopping cart with quantity 1
         else {
             const [result] = await pool.execute('INSERT INTO Panier_Produit (idPanier, idProduit, quantite) VALUES (?, ?, ?)', [idPanier, idProduit, 1]);
         }
@@ -355,9 +356,9 @@ router.post('/item', async (req, res, next) => {
 
 /**
  * @openapi
- * /shoppingList:
+ * /shoppingCart:
  *   delete:
- *     summary: Empty a shopping list
+ *     summary: Empty a shopping cart
  *     requestBody:
  *       required: true
  *       content:
@@ -385,9 +386,9 @@ router.delete('/list', async (req, res, next) => {
 
 /**
  * @openapi
- * /shoppingList:
+ * /shoppingCart/item:
  *   delete:
- *     summary: Remove an item from a shopping list
+ *     summary: Remove an item from a shopping cart
  *     requestBody:
  *       required: true
  *       content:
