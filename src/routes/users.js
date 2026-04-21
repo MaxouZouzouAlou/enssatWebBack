@@ -1,6 +1,7 @@
-const express = require('express');
+import express from 'express';
+import pool from '../server_config/db.js';
+
 const router = express.Router();
-const pool = require('../server_config/db.js');
 
 /**
  * @openapi
@@ -67,4 +68,4 @@ router.post('/', async (req, res, next) => {
   }
 });
 
-module.exports = router;
+export default router;

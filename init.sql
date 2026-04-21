@@ -2,20 +2,83 @@ CREATE DATABASE IF NOT EXISTS localzh;
 USE localzh;
 
 -- ========================
+-- BETTER AUTH
+-- ========================
+
+CREATE TABLE `user` (
+    id              VARCHAR(255) PRIMARY KEY,
+    name            VARCHAR(255) NOT NULL,
+    email           VARCHAR(255) NOT NULL UNIQUE,
+    emailVerified   BOOLEAN NOT NULL DEFAULT FALSE,
+    image           TEXT,
+    accountType     VARCHAR(50) DEFAULT 'particulier',
+    firstName       VARCHAR(100),
+    lastName        VARCHAR(100),
+    createdAt       DATETIME NOT NULL,
+    updatedAt       DATETIME NOT NULL
+);
+
+CREATE TABLE `session` (
+    id          VARCHAR(255) PRIMARY KEY,
+    expiresAt   DATETIME NOT NULL,
+    token       VARCHAR(255) NOT NULL UNIQUE,
+    createdAt   DATETIME NOT NULL,
+    updatedAt   DATETIME NOT NULL,
+    ipAddress   TEXT,
+    userAgent   TEXT,
+    userId      VARCHAR(255) NOT NULL,
+    FOREIGN KEY (userId) REFERENCES `user`(id) ON DELETE CASCADE
+);
+
+CREATE TABLE `account` (
+    id                    VARCHAR(255) PRIMARY KEY,
+    accountId             VARCHAR(255) NOT NULL,
+    providerId            VARCHAR(255) NOT NULL,
+    userId                VARCHAR(255) NOT NULL,
+    accessToken           TEXT,
+    refreshToken          TEXT,
+    idToken               TEXT,
+    accessTokenExpiresAt  DATETIME,
+    refreshTokenExpiresAt DATETIME,
+    scope                 TEXT,
+    password              TEXT,
+    createdAt             DATETIME NOT NULL,
+    updatedAt             DATETIME NOT NULL,
+    FOREIGN KEY (userId) REFERENCES `user`(id) ON DELETE CASCADE
+);
+
+CREATE TABLE `verification` (
+    id          VARCHAR(255) PRIMARY KEY,
+    identifier  VARCHAR(255) NOT NULL,
+    value       TEXT NOT NULL,
+    expiresAt   DATETIME NOT NULL,
+    createdAt   DATETIME NOT NULL,
+    updatedAt   DATETIME NOT NULL
+);
+
+CREATE INDEX idx_session_userId ON `session`(userId);
+CREATE INDEX idx_account_userId ON `account`(userId);
+CREATE INDEX idx_verification_identifier ON `verification`(identifier);
+
+-- ========================
 -- UTILISATEURS (héritage)
 -- ========================
 
 CREATE TABLE Utilisateur (
-    id                  INT PRIMARY KEY AUTO_INCREMENT,
-    mdp                 VARCHAR(255) NOT NULL,
-    nom                 VARCHAR(100),
-    prenom              VARCHAR(100),
-    type_utilisateur    VARCHAR(50) NOT NULL  -- 'client', 'admin', 'superadmin'
+    id               INT          PRIMARY KEY AUTO_INCREMENT,
+    type_utilisateur VARCHAR(50)  NOT NULL,
+    nom              VARCHAR(100) NOT NULL,
+    prenom           VARCHAR(100) NOT NULL,
+    email            VARCHAR(255) UNIQUE,
+    num_telephone    VARCHAR(20),
+    adresse_ligne    VARCHAR(255),
+    code_postal      VARCHAR(10),
+    ville            VARCHAR(100),
+    idAdmin          INT          UNIQUE
 );
 
 CREATE TABLE Client (
     idUser          INT PRIMARY KEY,
-    email           VARCHAR(255) UNIQUE NOT NULL,
     pointsFidelite  INT DEFAULT 0,
     FOREIGN KEY (idUser) REFERENCES Utilisateur(id) ON DELETE CASCADE
 );
@@ -31,17 +94,21 @@ CREATE TABLE SuperAdmin (
     -- SuperAdmin "est un" Admin (double héritage)
 );
 
+ALTER TABLE Utilisateur
+    ADD CONSTRAINT fk_utilisateur_superadmin
+    FOREIGN KEY (idAdmin) REFERENCES SuperAdmin(idAdmin)
+    ON DELETE SET NULL ON UPDATE CASCADE;
+
 -- ========================
 -- PRODUCTEUR & PROFESSIONNEL
 -- ========================
 
 CREATE TABLE Producteur (
-    idProducteur    INT PRIMARY KEY AUTO_INCREMENT,
-    email           VARCHAR(255) UNIQUE NOT NULL,
-    mdp             VARCHAR(255) NOT NULL,
+    idProducteur    INT PRIMARY KEY,
     rating          FLOAT DEFAULT 0,
     adresse         VARCHAR(255),
-    num_telephone   VARCHAR(20)
+    num_telephone   VARCHAR(20),
+    FOREIGN KEY (idProducteur) REFERENCES Utilisateur(id) ON DELETE CASCADE
 );
 
 CREATE TABLE Producteur_SIRET (
@@ -52,9 +119,8 @@ CREATE TABLE Producteur_SIRET (
 );
 
 CREATE TABLE Professionnel (
-    idProfessionnel INT PRIMARY KEY AUTO_INCREMENT,
-    email           VARCHAR(255) UNIQUE NOT NULL,
-    mdp             VARCHAR(255) NOT NULL
+    idProfessionnel INT PRIMARY KEY,
+    FOREIGN KEY (idProfessionnel) REFERENCES Utilisateur(id) ON DELETE CASCADE
 );
 
 CREATE TABLE Professionnel_SIRET (
@@ -72,9 +138,29 @@ CREATE TABLE Entreprise (
     idEntreprise    INT PRIMARY KEY AUTO_INCREMENT,
     nom             VARCHAR(255) NOT NULL,
     siret           VARCHAR(14) UNIQUE NOT NULL,
+    adresse_ligne   VARCHAR(255),
+    code_postal     VARCHAR(10),
+    ville           VARCHAR(100),
     latitude        FLOAT,
     longitude       FLOAT
 );
+
+-- Mapping entre Better Auth et les tables metier existantes.
+CREATE TABLE AuthProfile (
+    authUserId       VARCHAR(255) PRIMARY KEY,
+    accountType      ENUM('particulier', 'professionnel') NOT NULL,
+    clientId         INT,
+    professionnelId  INT,
+    entrepriseId     INT,
+    createdAt        DATETIME NOT NULL,
+    updatedAt        DATETIME NOT NULL,
+    FOREIGN KEY (authUserId) REFERENCES `user`(id) ON DELETE CASCADE,
+    FOREIGN KEY (clientId) REFERENCES Client(idUser) ON DELETE CASCADE,
+    FOREIGN KEY (professionnelId) REFERENCES Professionnel(idProfessionnel) ON DELETE CASCADE,
+    FOREIGN KEY (entrepriseId) REFERENCES Entreprise(idEntreprise) ON DELETE SET NULL
+);
+
+CREATE INDEX idx_auth_profile_account_type ON AuthProfile(accountType);
 
 -- ========================
 -- PRODUIT
