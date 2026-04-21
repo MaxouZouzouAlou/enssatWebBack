@@ -24,6 +24,11 @@ CREATE TABLE Utilisateur (
     type_utilisateur VARCHAR(50)  NOT NULL,
     nom              VARCHAR(100) NOT NULL,
     prenom           VARCHAR(100) NOT NULL,
+    email            VARCHAR(255) UNIQUE,
+    num_telephone    VARCHAR(20),
+    adresse_ligne    VARCHAR(255),
+    code_postal      VARCHAR(10),
+    ville            VARCHAR(100),
     idAdmin          INT          UNIQUE,
     CONSTRAINT fk_utilisateur_superadmin
         FOREIGN KEY (idAdmin) REFERENCES SuperAdmin(idAdmin)
@@ -36,9 +41,6 @@ CREATE TABLE Utilisateur (
 CREATE TABLE Professionnel (
     idProfessionnel INT          PRIMARY KEY AUTO_INCREMENT,
     id              INT          NOT NULL UNIQUE,
-    email           VARCHAR(255) NOT NULL,
-    adresse         VARCHAR(255),
-    num_telephone   VARCHAR(20),
     CONSTRAINT fk_professionnel_utilisateur
         FOREIGN KEY (id) REFERENCES Utilisateur(id)
         ON DELETE CASCADE ON UPDATE CASCADE
@@ -60,10 +62,7 @@ CREATE TABLE Professionnel_Siret (
 CREATE TABLE Particulier (
     idParticulier  INT          PRIMARY KEY AUTO_INCREMENT,
     id             INT          NOT NULL UNIQUE,
-    email          VARCHAR(255) NOT NULL,
     pointsFidelite INT          NOT NULL DEFAULT 0,
-    num_telephone  VARCHAR(20),
-    adresse        VARCHAR(255),
     CONSTRAINT fk_particulier_utilisateur
         FOREIGN KEY (id) REFERENCES Utilisateur(id)
         ON DELETE CASCADE ON UPDATE CASCADE,
@@ -77,12 +76,9 @@ CREATE TABLE Entreprise (
     idEntreprise INT          PRIMARY KEY AUTO_INCREMENT,
     nom          VARCHAR(255) NOT NULL,
     siret        VARCHAR(14)  NOT NULL UNIQUE,
-    latitude     FLOAT,
-    longitude    FLOAT,
-    CONSTRAINT chk_entreprise_geo_bounds CHECK (
-        (latitude  IS NULL OR (latitude  >= -90  AND latitude  <= 90))  AND
-        (longitude IS NULL OR (longitude >= -180 AND longitude <= 180))
-    )
+    adresse_ligne VARCHAR(255),
+    code_postal   VARCHAR(10),
+    ville         VARCHAR(100)
 );
 
 -- Table d'association Professionnel <-> Entreprise (N-N)
@@ -147,15 +143,11 @@ CREATE TABLE Produit_Image (
 -- -------------------------------------------------------------
 CREATE TABLE LieuVente (
     idLieu    INT          PRIMARY KEY AUTO_INCREMENT,
-    longitude FLOAT,
-    latitude  FLOAT,
     horaires  VARCHAR(500),
     typeLieu  VARCHAR(100),
-    adresse   VARCHAR(255),
-    CONSTRAINT chk_lieuvente_geo_bounds CHECK (
-        (latitude  IS NULL OR (latitude  >= -90  AND latitude  <= 90))  AND
-        (longitude IS NULL OR (longitude >= -180 AND longitude <= 180))
-    )
+    adresse_ligne VARCHAR(255),
+    code_postal   VARCHAR(10),
+    ville         VARCHAR(100)
 );
 
 -- Entreprise expose Produit sur LieuVente (0..* -- 0..*)
@@ -189,46 +181,42 @@ CREATE TABLE Professionnel_LieuVente (
 -- -------------------------------------------------------------
 CREATE TABLE PointRelais (
     idRelais  INT          PRIMARY KEY AUTO_INCREMENT,
-    longitude FLOAT,
-    latitude  FLOAT,
     typeLieu  VARCHAR(100),
-    adresse   VARCHAR(255),
-    CONSTRAINT chk_pointrelais_geo_bounds CHECK (
-        (latitude  IS NULL OR (latitude  >= -90  AND latitude  <= 90))  AND
-        (longitude IS NULL OR (longitude >= -180 AND longitude <= 180))
-    )
+    adresse_ligne VARCHAR(255),
+    code_postal   VARCHAR(10),
+    ville         VARCHAR(100)
 );
 
 -- -------------------------------------------------------------
--- 10. ListeCourse
+-- 10. Panier
 -- -------------------------------------------------------------
-CREATE TABLE ListeCourse (
-    idListe         INT          PRIMARY KEY AUTO_INCREMENT,
+CREATE TABLE Panier (
+    idPanier        INT          PRIMARY KEY AUTO_INCREMENT,
     nom             VARCHAR(255) NOT NULL,
     estLivrable     BOOLEAN      NOT NULL DEFAULT TRUE,
     idParticulier   INT,
     idProfessionnel INT,
-    CONSTRAINT fk_liste_particulier
+    CONSTRAINT fk_panier_particulier
         FOREIGN KEY (idParticulier) REFERENCES Particulier(idParticulier)
         ON DELETE SET NULL ON UPDATE CASCADE,
-    CONSTRAINT fk_liste_professionnel
+    CONSTRAINT fk_panier_professionnel
         FOREIGN KEY (idProfessionnel) REFERENCES Professionnel(idProfessionnel)
         ON DELETE SET NULL ON UPDATE CASCADE
 );
 
--- Produits dans une ListeCourse
-CREATE TABLE ListeCourse_Produit (
-    idListe   INT NOT NULL,
+-- Produits dans un Panier
+CREATE TABLE Panier_Produit (
+    idPanier  INT NOT NULL,
     idProduit INT NOT NULL,
     quantite  INT NOT NULL DEFAULT 1,
-    PRIMARY KEY (idListe, idProduit),
-    CONSTRAINT fk_lp_liste
-        FOREIGN KEY (idListe) REFERENCES ListeCourse(idListe)
+    PRIMARY KEY (idPanier, idProduit),
+    CONSTRAINT fk_pp_panier
+        FOREIGN KEY (idPanier) REFERENCES Panier(idPanier)
         ON DELETE CASCADE ON UPDATE CASCADE,
-    CONSTRAINT fk_lp_produit
+    CONSTRAINT fk_pp_produit
         FOREIGN KEY (idProduit) REFERENCES Produit(idProduit)
         ON DELETE CASCADE ON UPDATE CASCADE,
-    CONSTRAINT chk_lcp_quantite_pos CHECK (quantite > 0)
+    CONSTRAINT chk_pp_quantite_pos CHECK (quantite > 0)
 );
 
 -- -------------------------------------------------------------
@@ -500,26 +488,26 @@ INSERT INTO SuperAdmin (idAdmin) VALUES
 -- -------------------------------------------------------------
 -- 2. Utilisateur
 -- -------------------------------------------------------------
-INSERT INTO Utilisateur (id, mdp, type_utilisateur, nom, prenom, idAdmin) VALUES
-(1,  '$2b$12$hashed_password_1', 'superadmin',    'Dupont',    'Alice',   1),
-(2,  '$2b$12$hashed_password_2', 'superadmin',    'Martin',    'Bernard', 2),
-(3,  '$2b$12$hashed_password_3', 'professionnel', 'Leroy',     'Claire',  NULL),
-(4,  '$2b$12$hashed_password_4', 'professionnel', 'Moreau',    'David',   NULL),
-(5,  '$2b$12$hashed_password_5', 'professionnel', 'Simon',     'Emma',    NULL),
-(6,  '$2b$12$hashed_password_6', 'particulier',   'Laurent',   'François',NULL),
-(7,  '$2b$12$hashed_password_7', 'particulier',   'Thomas',    'Gabrielle',NULL),
-(8,  '$2b$12$hashed_password_8', 'particulier',   'Richard',   'Hugo',    NULL),
-(9,  '$2b$12$hashed_password_9', 'particulier',   'Petit',     'Isabelle',NULL),
-(10, '$2b$12$hashed_password_0', 'professionnel', 'Girard',    'Julien',  NULL);
+INSERT INTO Utilisateur (id, mdp, type_utilisateur, nom, prenom, email, num_telephone, adresse_ligne, code_postal, ville, idAdmin) VALUES
+(1,  '$2b$12$hashed_password_1', 'superadmin',    'Dupont',    'Alice',     'alice.dupont@localzh.fr',       '0600000001', '1 Rue de l\'Admin',      '35000', 'Rennes',     1),
+(2,  '$2b$12$hashed_password_2', 'superadmin',    'Martin',    'Bernard',   'bernard.martin@localzh.fr',    '0600000002', '2 Rue de l\'Admin',      '35000', 'Rennes',     2),
+(3,  '$2b$12$hashed_password_3', 'professionnel', 'Leroy',     'Claire',    'claire.leroy@ferme-leroy.fr',  '0611223344', '12 Rue des Champs',      '35000', 'Rennes',     NULL),
+(4,  '$2b$12$hashed_password_4', 'professionnel', 'Moreau',    'David',     'david.moreau@boulangerie-moreau.fr', '0622334455', '5 Place du Marché', '35200', 'Rennes', NULL),
+(5,  '$2b$12$hashed_password_5', 'professionnel', 'Simon',     'Emma',      'emma.simon@maraichere-simon.fr','0633445566', '8 Allée des Jardins',    '35700', 'Rennes',     NULL),
+(6,  '$2b$12$hashed_password_6', 'particulier',   'Laurent',   'François',  'francois.laurent@email.fr',    '0655667788', '14 Rue du Bois',         '35000', 'Rennes',     NULL),
+(7,  '$2b$12$hashed_password_7', 'particulier',   'Thomas',    'Gabrielle', 'gabrielle.thomas@email.fr',    '0666778899', '22 Avenue de la Paix',   '35200', 'Rennes',     NULL),
+(8,  '$2b$12$hashed_password_8', 'particulier',   'Richard',   'Hugo',      'hugo.richard@email.fr',        '0677889900', '7 Boulevard du Port',   '35400', 'Saint-Malo', NULL),
+(9,  '$2b$12$hashed_password_9', 'particulier',   'Petit',     'Isabelle',  'isabelle.petit@email.fr',      '0688990011', '33 Chemin des Lilas',   '35700', 'Rennes',     NULL),
+(10, '$2b$12$hashed_password_0', 'professionnel', 'Girard',    'Julien',    'julien.girard@fromagerie-girard.fr', '0644556677', '3 Impasse du Moulin', '35800', 'Dinard', NULL);
 
 -- -------------------------------------------------------------
 -- 3. Professionnel
 -- -------------------------------------------------------------
-INSERT INTO Professionnel (idProfessionnel, id, email, adresse, num_telephone) VALUES
-(1, 3, 'claire.leroy@ferme-leroy.fr',    '12 Rue des Champs, 35000 Rennes',       '0611223344'),
-(2, 4, 'david.moreau@boulangerie-moreau.fr', '5 Place du Marché, 35200 Rennes',   '0622334455'),
-(3, 5, 'emma.simon@maraichere-simon.fr', '8 Allée des Jardins, 35700 Rennes',     '0633445566'),
-(4, 10,'julien.girard@fromagerie-girard.fr','3 Impasse du Moulin, 35800 Dinard',  '0644556677');
+INSERT INTO Professionnel (idProfessionnel, id) VALUES
+(1, 3),
+(2, 4),
+(3, 5),
+(4, 10);
 
 -- -------------------------------------------------------------
 -- SIRET multivalué
@@ -535,20 +523,20 @@ INSERT INTO Professionnel_Siret (idProfessionnel, numero_siret) VALUES
 -- -------------------------------------------------------------
 -- 4. Particulier
 -- -------------------------------------------------------------
-INSERT INTO Particulier (idParticulier, id, email, pointsFidelite, num_telephone, adresse) VALUES
-(1, 6, 'francois.laurent@email.fr',   120, '0655667788', '14 Rue du Bois, 35000 Rennes'),
-(2, 7, 'gabrielle.thomas@email.fr',   45,  '0666778899', '22 Avenue de la Paix, 35200 Rennes'),
-(3, 8, 'hugo.richard@email.fr',       200, '0677889900', '7 Boulevard du Port, 35400 Saint-Malo'),
-(4, 9, 'isabelle.petit@email.fr',     10,  '0688990011', '33 Chemin des Lilas, 35700 Rennes');
+INSERT INTO Particulier (idParticulier, id, pointsFidelite) VALUES
+(1, 6, 120),
+(2, 7, 45),
+(3, 8, 200),
+(4, 9, 10);
 
 -- -------------------------------------------------------------
 -- 5. Entreprise
 -- -------------------------------------------------------------
-INSERT INTO Entreprise (idEntreprise, nom, siret, latitude, longitude) VALUES
-(1, 'Ferme Bio Leroy',          '12345678901234', 48.1173, -1.6778),
-(2, 'Boulangerie Artisanale Moreau', '23456789012345', 48.1100, -1.6800),
-(3, 'Maraîchère Simon',         '34567890123456', 48.1250, -1.6500),
-(4, 'Fromagerie Girard',        '45678901234567', 48.6361, -2.0078);
+INSERT INTO Entreprise (idEntreprise, nom, siret, adresse_ligne, code_postal, ville) VALUES
+(1, 'Ferme Bio Leroy',          '12345678901234', '12 Rue des Champs',    '35000', 'Rennes'),
+(2, 'Boulangerie Artisanale Moreau', '23456789012345', '5 Place du Marché', '35200', 'Rennes'),
+(3, 'Maraîchère Simon',         '34567890123456', '8 Allée des Jardins',  '35700', 'Rennes'),
+(4, 'Fromagerie Girard',        '45678901234567', '3 Impasse du Moulin',  '35800', 'Dinard');
 
 -- Association Professionnel <-> Entreprise
 INSERT INTO Professionnel_Entreprise (idProfessionnel, idEntreprise) VALUES
@@ -611,12 +599,12 @@ INSERT INTO Produit_Image (idProduit, idImage) VALUES
 -- -------------------------------------------------------------
 -- 8. LieuVente
 -- -------------------------------------------------------------
-INSERT INTO LieuVente (idLieu, longitude, latitude, horaires, typeLieu, adresse) VALUES
-(1, -1.6778, 48.1173, 'Mar-Sam 8h-19h',           'Marché',      'Place des Lices, 35000 Rennes'),
-(2, -1.6800, 48.1100, 'Lun-Sam 7h-13h / 15h-19h', 'Boutique',    '5 Place du Marché, 35200 Rennes'),
-(3, -1.6500, 48.1250, 'Mer-Dim 9h-13h',            'Marché',      'Marché de la Poterie, 35700 Rennes'),
-(4, -2.0078, 48.6361, 'Lun-Ven 9h-18h / Sam 9h-13h', 'Boutique', '3 Impasse du Moulin, 35800 Dinard'),
-(5, -1.7000, 48.1000, 'Jeu 15h-19h',               'Drive fermier','Zone Artisanale Sud, 35000 Rennes');
+INSERT INTO LieuVente (idLieu, horaires, typeLieu, adresse_ligne, code_postal, ville) VALUES
+(1, 'Mar-Sam 8h-19h',             'Marché',       'Place des Lices',        '35000', 'Rennes'),
+(2, 'Lun-Sam 7h-13h / 15h-19h',   'Boutique',     '5 Place du Marché',      '35200', 'Rennes'),
+(3, 'Mer-Dim 9h-13h',             'Marché',       'Marché de la Poterie',   '35700', 'Rennes'),
+(4, 'Lun-Ven 9h-18h / Sam 9h-13h','Boutique',     '3 Impasse du Moulin',    '35800', 'Dinard'),
+(5, 'Jeu 15h-19h',                'Drive fermier','Zone Artisanale Sud',    '35000', 'Rennes');
 
 -- Entreprise_LieuVente
 INSERT INTO Entreprise_LieuVente (idEntreprise, idLieu) VALUES
@@ -641,16 +629,16 @@ INSERT INTO Professionnel_LieuVente (idProfessionnel, idLieu) VALUES
 -- -------------------------------------------------------------
 -- 9. PointRelais
 -- -------------------------------------------------------------
-INSERT INTO PointRelais (idRelais, longitude, latitude, typeLieu, adresse) VALUES
-(1, -1.6700, 48.1200, 'Épicerie',     '10 Rue de Nantes, 35000 Rennes'),
-(2, -1.6850, 48.1050, 'Tabac-Presse', '22 Boulevard de la Liberté, 35000 Rennes'),
-(3, -1.6400, 48.1300, 'Pharmacie',    '5 Rue des Écoles, 35700 Rennes'),
-(4, -2.0100, 48.6400, 'Épicerie fine','15 Rue du Commerce, 35800 Dinard');
+INSERT INTO PointRelais (idRelais, typeLieu, adresse_ligne, code_postal, ville) VALUES
+(1, 'Épicerie',      '10 Rue de Nantes',            '35000', 'Rennes'),
+(2, 'Tabac-Presse',  '22 Boulevard de la Liberté',  '35000', 'Rennes'),
+(3, 'Pharmacie',     '5 Rue des Écoles',            '35700', 'Rennes'),
+(4, 'Épicerie fine', '15 Rue du Commerce',          '35800', 'Dinard');
 
 -- -------------------------------------------------------------
--- 10. ListeCourse
+-- 10. Panier
 -- -------------------------------------------------------------
-INSERT INTO ListeCourse (idListe, nom, estLivrable, idParticulier, idProfessionnel) VALUES
+INSERT INTO Panier (idPanier, nom, estLivrable, idParticulier, idProfessionnel) VALUES
 (1, 'Panier du weekend',       TRUE,  1,    NULL),
 (2, 'Courses hebdomadaires',   TRUE,  2,    NULL),
 (3, 'Commande restaurant',     TRUE,  NULL, 2),
@@ -658,8 +646,8 @@ INSERT INTO ListeCourse (idListe, nom, estLivrable, idParticulier, idProfessionn
 (5, 'Liste de saison automne', TRUE,  3,    NULL),
 (6, 'Petit déjeuner',          FALSE, 4,    NULL);
 
--- ListeCourse_Produit
-INSERT INTO ListeCourse_Produit (idListe, idProduit, quantite) VALUES
+-- Panier_Produit
+INSERT INTO Panier_Produit (idPanier, idProduit, quantite) VALUES
 (1, 1,  2),
 (1, 6,  3),
 (1, 11, 1),
