@@ -11,6 +11,10 @@ const frontendOrigin = process.env.FRONTEND_ORIGIN || 'http://localhost:3000';
 const backendPort = process.env.PORT_OPEN || '49161';
 const backendOrigin = process.env.BETTER_AUTH_URL || `http://localhost:${backendPort}`;
 
+const normalizeOrigin = (u) => (typeof u === 'string' ? u.replace(/\/$/, '') : u);
+const normalizedFrontend = normalizeOrigin(frontendOrigin);
+const normalizedBackend = normalizeOrigin(backendOrigin);
+
 const googleClientId = process.env.GOOGLE_CLIENT_ID;
 const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET;
 
@@ -19,7 +23,7 @@ export const auth = betterAuth({
 	baseURL: backendOrigin,
 	secret: process.env.BETTER_AUTH_SECRET,
 	database: pool,
-	trustedOrigins: [frontendOrigin, backendOrigin],
+	trustedOrigins: [normalizedFrontend, normalizedBackend],
 	emailAndPassword: {
 		enabled: true,
 		minPasswordLength: 8,

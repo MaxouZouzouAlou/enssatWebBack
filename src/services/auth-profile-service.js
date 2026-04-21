@@ -24,6 +24,15 @@ export class ConflictError extends Error {
 
 const trim = (value) => String(value || '').trim();
 
+async function waitForAuthUserExists(authUserId, attempts = 5, delayMs = 100) {
+	for (let i = 0; i < attempts; i++) {
+		const [rows] = await pool.execute('SELECT id FROM `user` WHERE id = ? LIMIT 1', [authUserId]);
+		if (rows.length) return true;
+		await new Promise((r) => setTimeout(r, delayMs));
+	}
+	return false;
+}
+
 export function normalizeEmail(email) {
 	return trim(email).toLowerCase();
 }
@@ -134,6 +143,12 @@ export async function ensureBusinessProfile(authUser, options = {}) {
 	const nom = trim(options.nom || authUser.lastName || getLastName(authUser.name));
 	const prenom = trim(options.prenom || authUser.firstName || getFirstName(authUser.name));
 	const entreprise = options.entreprise || {};
+
+	// Ensure the Better Auth `user` row exists before creating FK referencing records
+	const exists = await waitForAuthUserExists(authUser.id);
+	if (!exists) {
+		throw new ValidationError('Auth user record not found yet. Please retry.');
+	}
 
 	const conn = await pool.getConnection();
 	try {
