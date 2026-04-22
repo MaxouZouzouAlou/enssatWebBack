@@ -1,7 +1,61 @@
 import express from 'express';
+import { fromNodeHeaders } from 'better-auth/node';
+import { auth } from '../auth.js';
 import pool from '../server_config/db.js';
+import { getBusinessProfileByAuthUserId } from '../services/auth-profile-service.js';
 
 const router = express.Router();
+
+router.post('/me', async (req, res, next) => {
+    try {
+        const session = await auth.api.getSession({
+            headers: fromNodeHeaders(req.headers)
+        });
+
+        if (!session) {
+            return res.status(401).json({ error: 'Non authentifie.' });
+        }
+
+        const profile = await getBusinessProfileByAuthUserId(session.user.id);
+        if (!profile) {
+            return res.status(404).json({ error: 'Profil introuvable.' });
+        }
+
+        let cartRow = null;
+
+        if (profile.particulier?.id) {
+            const [rows] = await pool.query('SELECT * FROM Panier WHERE idParticulier = ? LIMIT 1', [profile.particulier.id]);
+            cartRow = rows[0] || null;
+            if (!cartRow) {
+                const [result] = await pool.execute(
+                    'INSERT INTO Panier (nom, estLivrable, idParticulier) VALUES (?, TRUE, ?)',
+                    [`Panier de ${profile.user.prenom || profile.user.nom || 'client'}`, profile.particulier.id]
+                );
+                const [createdRows] = await pool.query('SELECT * FROM Panier WHERE idPanier = ? LIMIT 1', [result.insertId]);
+                cartRow = createdRows[0] || null;
+            }
+        } else if (profile.professionnel?.id) {
+            const [rows] = await pool.query('SELECT * FROM Panier WHERE idProfessionnel = ? LIMIT 1', [profile.professionnel.id]);
+            cartRow = rows[0] || null;
+            if (!cartRow) {
+                const [result] = await pool.execute(
+                    'INSERT INTO Panier (nom, estLivrable, idProfessionnel) VALUES (?, FALSE, ?)',
+                    [`Panier pro de ${profile.user.prenom || profile.user.nom || 'professionnel'}`, profile.professionnel.id]
+                );
+                const [createdRows] = await pool.query('SELECT * FROM Panier WHERE idPanier = ? LIMIT 1', [result.insertId]);
+                cartRow = createdRows[0] || null;
+            }
+        }
+
+        if (!cartRow) {
+            return res.status(404).json({ error: 'Aucun panier disponible pour ce compte.' });
+        }
+
+        return res.json(cartRow);
+    } catch (err) {
+        next(err);
+    }
+});
 
 
 /**

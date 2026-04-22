@@ -28,7 +28,7 @@ const router = express.Router();
  */
 router.get('/', async (req, res, next) => {
 	try {
-		const [rows] = await pool.query('SELECT * FROM produit');
+		const [rows] = await pool.query('SELECT * FROM Produit');
 		res.json(rows);
 	} catch (err) {
 		next(err);

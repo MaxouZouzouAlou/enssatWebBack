@@ -644,7 +644,7 @@ INSERT INTO SuperAdmin (idAdmin) VALUES
 INSERT INTO Utilisateur (id, type_utilisateur, nom, prenom, email, num_telephone, adresse_ligne, code_postal, ville, idAdmin) VALUES
 (1,  'superadmin',    'Dupont',    'Alice',     'alice.dupont@localzh.fr',       '0600000001', '1 Rue de l\'Admin',      '35000', 'Rennes',     1),
 (2,  'superadmin',    'Martin',    'Bernard',   'bernard.martin@localzh.fr',    '0600000002', '2 Rue de l\'Admin',      '35000', 'Rennes',     2),
-(3,  'professionnel', 'Leroy',     'Claire',    'claire.leroy@ferme-leroy.fr',  '0611223344', '12 Rue des Champs',      '35000', 'Rennes',     NULL),
+(3,  'professionnel', 'Leroy',     'Claire',    'claire.leroy@fermebio-leroy.fr', '0611223344', '12 Rue des Champs',     '35000', 'Rennes',     NULL),
 (4,  'professionnel', 'Moreau',    'David',     'david.moreau@boulangerie-moreau.fr', '0622334455', '5 Place du Marché', '35200', 'Rennes', NULL),
 (5,  'professionnel', 'Simon',     'Emma',      'emma.simon@maraichere-simon.fr','0633445566', '8 Allée des Jardins',    '35700', 'Rennes',     NULL),
 (6,  'particulier',   'Laurent',   'François',  'francois.laurent@email.fr',    '0655667788', '14 Rue du Bois',         '35000', 'Rennes',     NULL),

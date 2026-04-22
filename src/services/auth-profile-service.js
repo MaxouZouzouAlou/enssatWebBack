@@ -140,7 +140,7 @@ export async function ensureBusinessProfile(authUser, options = {}) {
 		await conn.beginTransaction();
 
 		const [existingRows] = await conn.execute(
-			`SELECT authUserId, accountType, clientId, professionnelId, entrepriseId
+			`SELECT authUserId, accountType, particulierId, professionnelId, entrepriseId
 			 FROM AuthProfile
 			 WHERE authUserId = ?
 			 FOR UPDATE`,
@@ -161,7 +161,7 @@ export async function ensureBusinessProfile(authUser, options = {}) {
 				prenom
 			});
 		} else {
-			await createClientProfile(conn, {
+			await createParticulierProfile(conn, {
 				authUserId: authUser.id,
 				email,
 				nom,
@@ -179,20 +179,20 @@ export async function ensureBusinessProfile(authUser, options = {}) {
 	}
 }
 
-async function createClientProfile(conn, { authUserId, email, nom, prenom }) {
+async function createParticulierProfile(conn, { authUserId, email, nom, prenom }) {
 	const [userResult] = await conn.execute(
 		`INSERT INTO Utilisateur
 		 (type_utilisateur, nom, prenom, email, num_telephone, adresse_ligne, code_postal, ville, idAdmin)
 		 VALUES (?, ?, ?, ?, NULL, NULL, NULL, NULL, NULL)`,
 		['particulier', nom, prenom, email]
 	);
-	const clientId = userResult.insertId;
-	await conn.execute('INSERT INTO Client (idUser) VALUES (?)', [clientId]);
+	const utilisateurId = userResult.insertId;
+	const [particulierResult] = await conn.execute('INSERT INTO Particulier (id) VALUES (?)', [utilisateurId]);
 	await conn.execute(
 		`INSERT INTO AuthProfile
-		 (authUserId, accountType, clientId, professionnelId, entrepriseId, createdAt, updatedAt)
+		 (authUserId, accountType, particulierId, professionnelId, entrepriseId, createdAt, updatedAt)
 		 VALUES (?, 'particulier', ?, NULL, NULL, NOW(), NOW())`,
-		[authUserId, clientId]
+		[authUserId, particulierResult.insertId]
 	);
 }
 
@@ -229,7 +229,7 @@ async function createProfessionalProfile(conn, { authUserId, email, entreprise, 
 	]);
 	await conn.execute(
 		`INSERT INTO AuthProfile
-		 (authUserId, accountType, clientId, professionnelId, entrepriseId, createdAt, updatedAt)
+		 (authUserId, accountType, particulierId, professionnelId, entrepriseId, createdAt, updatedAt)
 		 VALUES (?, 'professionnel', NULL, ?, ?, NOW(), NOW())`,
 		[authUserId, professionnelId, entrepriseId]
 	);
@@ -240,7 +240,7 @@ export async function getBusinessProfileByAuthUserId(authUserId) {
 		`SELECT
 			ap.authUserId,
 			ap.accountType,
-			ap.clientId,
+			ap.particulierId,
 			ap.professionnelId,
 			ap.entrepriseId,
 			u.email AS authEmail,
@@ -249,13 +249,13 @@ export async function getBusinessProfileByAuthUserId(authUserId) {
 			u.emailVerified,
 			u.firstName AS authFirstName,
 			u.lastName AS authLastName,
-			utilisateur.email AS clientEmail,
-			utilisateur.nom AS clientNom,
-			utilisateur.prenom AS clientPrenom,
-			utilisateur.num_telephone AS clientTelephone,
-			utilisateur.adresse_ligne AS clientAdresseLigne,
-			utilisateur.code_postal AS clientCodePostal,
-			utilisateur.ville AS clientVille,
+			particulierUtilisateur.email AS particulierEmail,
+			particulierUtilisateur.nom AS particulierNom,
+			particulierUtilisateur.prenom AS particulierPrenom,
+			particulierUtilisateur.num_telephone AS particulierTelephone,
+			particulierUtilisateur.adresse_ligne AS particulierAdresseLigne,
+			particulierUtilisateur.code_postal AS particulierCodePostal,
+			particulierUtilisateur.ville AS particulierVille,
 			proUtilisateur.email AS professionnelEmail,
 			proUtilisateur.nom AS professionnelNom,
 			proUtilisateur.prenom AS professionnelPrenom,
@@ -270,10 +270,10 @@ export async function getBusinessProfileByAuthUserId(authUserId) {
 			entreprise.ville AS entrepriseVille
 		 FROM AuthProfile ap
 		 INNER JOIN \`user\` u ON u.id = ap.authUserId
-		 LEFT JOIN Client client ON client.idUser = ap.clientId
-		 LEFT JOIN Utilisateur utilisateur ON utilisateur.id = client.idUser
+		 LEFT JOIN Particulier particulier ON particulier.idParticulier = ap.particulierId
+		 LEFT JOIN Utilisateur particulierUtilisateur ON particulierUtilisateur.id = particulier.id
 		 LEFT JOIN Professionnel pro ON pro.idProfessionnel = ap.professionnelId
-		 LEFT JOIN Utilisateur proUtilisateur ON proUtilisateur.id = pro.idProfessionnel
+		 LEFT JOIN Utilisateur proUtilisateur ON proUtilisateur.id = pro.id
 		 LEFT JOIN Entreprise entreprise ON entreprise.idEntreprise = ap.entrepriseId
 		 WHERE ap.authUserId = ?
 		 LIMIT 1`,
@@ -290,17 +290,27 @@ export async function getBusinessProfileByAuthUserId(authUserId) {
 			name: row.authName,
 			image: row.authImage,
 			emailVerified: Boolean(row.emailVerified),
-			nom: row.clientNom || row.professionnelNom || row.authLastName || null,
-			prenom: row.clientPrenom || row.professionnelPrenom || row.authFirstName || null
+			nom: row.particulierNom || row.professionnelNom || row.authLastName || null,
+			prenom: row.particulierPrenom || row.professionnelPrenom || row.authFirstName || null
 		},
-		client: row.clientId
+		particulier: row.particulierId
 			? {
-				id: row.clientId,
-				email: row.clientEmail,
-				num_telephone: row.clientTelephone,
-				adresse_ligne: row.clientAdresseLigne,
-				code_postal: row.clientCodePostal,
-				ville: row.clientVille
+				id: row.particulierId,
+				email: row.particulierEmail,
+				num_telephone: row.particulierTelephone,
+				adresse_ligne: row.particulierAdresseLigne,
+				code_postal: row.particulierCodePostal,
+				ville: row.particulierVille
+			}
+			: null,
+		client: row.particulierId
+			? {
+				id: row.particulierId,
+				email: row.particulierEmail,
+				num_telephone: row.particulierTelephone,
+				adresse_ligne: row.particulierAdresseLigne,
+				code_postal: row.particulierCodePostal,
+				ville: row.particulierVille
 			}
 			: null,
 		professionnel: row.professionnelId

@@ -77,7 +77,7 @@ router.get('/:idProfessionnel/dashboard', requireProfessionalSession, async (req
 		const [proRows] = await pool.query(
 			`SELECT p.idProfessionnel, u.nom, u.prenom, u.email
 			 FROM Professionnel p
-			 JOIN Utilisateur u ON u.id = p.idProfessionnel
+			 JOIN Utilisateur u ON u.id = p.id
 			 WHERE p.idProfessionnel = ?`,
 			[idProfessionnel]
 		);
@@ -173,16 +173,16 @@ router.get('/:idProfessionnel/dashboard', requireProfessionalSession, async (req
 				 COUNT(DISTINCT c.idCommande) AS orders,
 				 ROUND(COALESCE(SUM(perOrder.orderRevenue), 0), 2) AS revenue
 			 FROM (
-				 SELECT c.idCommande, c.idClient, COALESCE(SUM(lc.prixTTC), 0) AS orderRevenue
+				 SELECT c.idCommande, c.idParticulier, COALESCE(SUM(lc.prixTTC), 0) AS orderRevenue
 				 FROM LigneCommande lc
 				 JOIN Produit p ON p.idProduit = lc.idProduit
 				 JOIN Commande c ON c.idCommande = lc.idCommande
 				 WHERE p.idProfessionnel = ?
-				 GROUP BY c.idCommande, c.idClient
+				 GROUP BY c.idCommande, c.idParticulier
 			 ) AS perOrder
 			 JOIN Commande c ON c.idCommande = perOrder.idCommande
-			 LEFT JOIN Client client ON client.idUser = c.idClient
-			 LEFT JOIN Utilisateur u ON u.id = client.idUser
+			 LEFT JOIN Particulier particulier ON particulier.idParticulier = c.idParticulier
+			 LEFT JOIN Utilisateur u ON u.id = particulier.id
 			 GROUP BY customer
 			 ORDER BY revenue DESC
 			 LIMIT 5`,

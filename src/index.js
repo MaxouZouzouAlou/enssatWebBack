@@ -3,6 +3,7 @@ import dotenv from 'dotenv';
 import { toNodeHandler } from 'better-auth/node';
 import { auth } from './auth.js';
 import { seedSuperAdmin } from './seed/superadmin.js';
+import cors from 'cors';
 
 import authProfileRouter from './routes/auth-profile.js';
 import incidentsRouter from './routes/incidents.js';
@@ -28,15 +29,16 @@ const swaggerSpec = swaggerJsdoc({
 	apis: ['./src/routes/*.js']
 });
 
-app.use((req, res, next) => {
-	res.header('Access-Control-Allow-Origin', FRONTEND_ORIGIN);
-	res.header('Vary', 'Origin');
-	res.header('Access-Control-Allow-Credentials', 'true');
-	res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-	res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
-	if (req.method === 'OPTIONS') return res.sendStatus(204);
-	return next();
-});
+const ALLOWED_FRONTEND_ORIGIN = FRONTEND_ORIGIN.replace(/\/$/, '');
+app.use(cors({
+    origin: (origin, callback) => {
+        if (!origin) return callback(null, true); // allow server-to-server or same-origin requests
+		const normalized = origin.replace(/\/$/, '');
+        if (normalized === ALLOWED_FRONTEND_ORIGIN) return callback(null, true);
+        return callback(new Error('Not allowed by CORS'));
+    },
+    credentials: true
+}));
 
 app.use('/api/auth', authProfileRouter);
 app.all('/api/auth/*', toNodeHandler(auth));
