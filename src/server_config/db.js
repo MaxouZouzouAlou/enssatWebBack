@@ -14,13 +14,15 @@ const pool = mysql.createPool({
 });
 
 // Test de connexion au démarrage
-pool.getConnection()
-	.then(conn => {
-		console.log('✅ Connecté à MySQL');
-		conn.release();
-	})
-	.catch(err => {
-		console.error('❌ Erreur de connexion MySQL :', err.message);
-	});
+if (process.env.NODE_ENV !== 'test') {
+	pool.getConnection()
+		.then(conn => {
+			console.log('✅ Connecté à MySQL');
+			conn.release();
+		})
+		.catch(err => {
+			console.error('❌ Erreur de connexion MySQL :', err.message);
+		});
+}
 
 export default pool;

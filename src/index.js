@@ -9,7 +9,7 @@ import authProfileRouter from './routes/auth-profile.js';
 import incidentsRouter from './routes/incidents.js';
 import professionnelsRouter from './routes/professionnels.js';
 import usersRouter from './routes/users.js';
-import productsRouter from './routes/products.js';
+import createProductsRouter from './routes/products.js';
 import shoppingCartRouter from './routes/shoppingCart.js';
 
 import swaggerJsdoc from 'swagger-jsdoc';
@@ -48,7 +48,7 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 app.use('/users', usersRouter);
 app.use('/professionnels', professionnelsRouter);
 app.use('/incidents', incidentsRouter);
-app.use('/products', productsRouter);
+app.use('/products', createProductsRouter());
 app.use('/shoppingCart', shoppingCartRouter);
 
 app.use((err, req, res, next) => {
