@@ -219,6 +219,24 @@ CREATE TABLE Panier_Produit (
     CONSTRAINT chk_pp_quantite_pos CHECK (quantite > 0)
 );
 
+-- Vue : produits d'un panier avec détails produit
+CREATE OR REPLACE VIEW Vue_Panier_Produit AS
+SELECT
+    pp.idPanier,
+    pp.idProduit,
+    pp.quantite,
+    p.nom AS nomProduit,
+    p.nature,
+    p.bio,
+    p.prix,
+    p.tva,
+    p.reductionProfessionnel,
+    p.stock,
+    p.visible,
+    p.idProfessionnel
+FROM Panier_Produit pp
+JOIN Produit p ON pp.idProduit = p.idProduit;
+
 -- -------------------------------------------------------------
 -- 11. Commande
 --     La règle "exactement un client" est assurée par triggers
