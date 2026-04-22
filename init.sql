@@ -198,6 +198,7 @@ CREATE TABLE Produit (
     idProfessionnel        INT           NOT NULL,
     nom                    VARCHAR(255)  NOT NULL,
     nature                 ENUM('Légume', 'Fruit', 'Viande', 'Boulangerie', 'Poisson', 'Laitier', 'Autre') NOT NULL,
+    unitaireOuKilo         BOOLEAN       NOT NULL DEFAULT TRUE,
     bio                    BOOLEAN       NOT NULL DEFAULT FALSE,
     prix                   DECIMAL(10,2) NOT NULL,
     tva                    DECIMAL(5,2)  NOT NULL DEFAULT 0,
@@ -610,6 +611,7 @@ SELECT
     pp.quantite,
     p.nom AS nomProduit,
     p.nature,
+    p.unitaireOuKilo,
     p.bio,
     p.prix,
     p.tva,
@@ -715,22 +717,22 @@ INSERT INTO Image (idImage, path) VALUES
 -- -------------------------------------------------------------
 -- 7. Produit
 -- -------------------------------------------------------------
-INSERT INTO Produit (idProduit, idProfessionnel, nom, nature, bio, prix, tva, reductionProfessionnel, stock, visible) VALUES
-(1,  1, 'Tomates cerises',     'Légume',  TRUE,  3.50,  5.50, 5.00,  99, TRUE),
-(2,  1, 'Courgettes',          'Légume',  TRUE,  2.00,  5.50, 0.00,  80,  TRUE),
-(3,  1, 'Pommes Golden',       'Fruit',   FALSE, 2.50,  5.50, 3.00,  99, TRUE),
-(4,  1, 'Œufs fermiers (x6)',  'Viande', FALSE, 2.80, 5.50, 0.00, 99, TRUE),
-(5,  1, 'Miel de fleurs',      'Autre', TRUE,  6.00, 5.50, 5.00, 60,  TRUE),
-(6,  2, 'Baguette tradition',  'Boulangerie',    FALSE, 1.20,  5.50, 0.00,  50,  TRUE),
-(7,  2, 'Pain complet',        'Boulangerie',    FALSE, 2.50,  5.50, 0.00,  30,  TRUE),
-(8,  2, 'Brioche',             'Boulangerie', FALSE, 3.80, 5.50, 0.00, 20, TRUE),
-(9,  3, 'Carottes (1 kg)',     'Légume',  TRUE,  1.80,  5.50, 0.00,  99, TRUE),
-(10, 3, 'Salade verte',        'Légume',  TRUE,  1.50,  5.50, 0.00,  80,  TRUE),
-(11, 4, 'Chèvre frais',        'Laitier', FALSE, 4.50, 20.00, 8.00,  40,  TRUE),
-(12, 4, 'Camembert artisanal', 'Laitier', FALSE, 5.00, 20.00, 5.00,  35,  TRUE),
-(13, 4, 'Comté 12 mois',       'Laitier', FALSE, 7.50, 20.00, 10.00, 25,  TRUE),
-(14, 1, 'Courges butternut',   'Légume',  TRUE,  3.20,  5.50, 0.00,  60,  TRUE),
-(15, 2, 'Croissant',           'Boulangerie', FALSE, 1.30, 5.50, 0.00, 40, FALSE);
+INSERT INTO Produit (idProduit, idProfessionnel, nom, nature, unitaireOuKilo, bio, prix, tva, reductionProfessionnel, stock, visible) VALUES
+(1,  1, 'Tomates cerises',     'Légume',      TRUE,  TRUE,  3.50,  5.50, 5.00,  120, TRUE),
+(2,  1, 'Courgettes',          'Légume',      FALSE, TRUE,  2.00,  5.50, 0.00,  80,  TRUE),
+(3,  1, 'Pommes Golden',       'Fruit',       FALSE, FALSE, 2.50,  5.50, 3.00,  99, TRUE),
+(4,  1, 'Œufs fermiers (x6)',  'Viande',      TRUE,  FALSE, 2.80,  5.50, 0.00, 99, TRUE),
+(5,  1, 'Miel de fleurs',      'Autre',       TRUE,  TRUE,  6.00,  5.50, 5.00, 60,  TRUE),
+(6,  2, 'Baguette tradition',  'Boulangerie', TRUE,  FALSE, 1.20,  5.50, 0.00,  50,  TRUE),
+(7,  2, 'Pain complet',        'Boulangerie', TRUE,  FALSE, 2.50,  5.50, 0.00,  30,  TRUE),
+(8,  2, 'Brioche',             'Boulangerie', TRUE,  FALSE, 3.80,  5.50, 0.00, 20, TRUE),
+(9,  3, 'Carottes (1 kg)',     'Légume',      FALSE, TRUE,  1.80,  5.50, 0.00,  99, TRUE),
+(10, 3, 'Salade verte',        'Légume',      TRUE,  TRUE,  1.50,  5.50, 0.00,  80,  TRUE),
+(11, 4, 'Chèvre frais',        'Laitier',     TRUE,  FALSE, 4.50, 20.00, 8.00,  40,  TRUE),
+(12, 4, 'Camembert artisanal', 'Laitier',     TRUE,  FALSE, 5.00, 20.00, 5.00,  35,  TRUE),
+(13, 4, 'Comté 12 mois',       'Laitier',     TRUE,  FALSE, 7.50, 20.00, 10.00, 25,  TRUE),
+(14, 1, 'Courges butternut',   'Légume',      FALSE, TRUE,  3.20,  5.50, 0.00,  60,  TRUE),
+(15, 2, 'Croissant',           'Boulangerie', TRUE,  FALSE, 1.30,  5.50, 0.00, 40, FALSE);
 
 -- Produit_Image
 INSERT INTO Produit_Image (idProduit, idImage) VALUES
