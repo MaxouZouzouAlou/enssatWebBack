@@ -5,6 +5,8 @@ import swaggerUi from 'swagger-ui-express';
 import { toNodeHandler } from 'better-auth/node';
 import { auth } from './auth.js';
 import authProfileRouter from './routes/auth-profile.js';
+import incidentsRouter from './routes/incidents.js';
+import professionnelsRouter from './routes/professionnels.js';
 import usersRouter from './routes/users.js';
 
 dotenv.config();
@@ -37,6 +39,14 @@ app.all('/api/auth/*', toNodeHandler(auth));
 app.use(express.json());
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 app.use('/users', usersRouter);
+app.use('/professionnels', professionnelsRouter);
+app.use('/incidents', incidentsRouter);
+
+app.use((err, req, res, next) => {
+	console.error(err);
+	if (res.headersSent) return next(err);
+	return res.status(500).json({ error: 'Erreur serveur.' });
+});
 
 app.listen(PORT_OPEN, async () => {
 	console.log(`Server is running on http://localhost:${PORT_OPEN}`);

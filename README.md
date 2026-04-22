@@ -20,6 +20,7 @@ mysql -u root -p localzh < migrations/001_auth.sql
 mysql -u root -p localzh < migrations/002_user_company_email_verification.sql
 mysql -u root -p localzh < migrations/003_drop_utilisateur_mdp.sql
 mysql -u root -p localzh < migrations/004_professionnel_producteur_use_utilisateur.sql
+mysql -u root -p localzh < migrations/005_products_use_professionnel.sql
 ```
 
 3. Configure auth environment variables:
@@ -77,3 +78,5 @@ Auth endpoints:
 - `GET /api/auth/profile` for current session plus domain profile.
 - `POST /api/auth/send-verification-email` to resend a verification email.
 - Better Auth native endpoints are mounted under `/api/auth/*`.
+- `GET /professionnels/:idProfessionnel/dashboard` for the authenticated
+  professional seller dashboard.

@@ -1,6 +1,9 @@
 import pool from '../server_config/db.js';
 
 const ACCOUNT_TYPES = new Set(['particulier', 'professionnel']);
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const NAME_REGEX = /^[A-Za-zÀ-ÖØ-öø-ÿ' -]{2,100}$/;
+const POSTAL_CODE_REGEX = /^\d{5}$/;
 
 export class ValidationError extends Error {
 	constructor(message, details = {}) {
@@ -41,6 +44,18 @@ export function validateSiret(siret) {
 	return normalized;
 }
 
+function validateName(value, label) {
+	if (!NAME_REGEX.test(value)) {
+		throw new ValidationError(`${label} invalide.`);
+	}
+}
+
+function validatePostalCode(codePostal) {
+	if (!POSTAL_CODE_REGEX.test(codePostal)) {
+		throw new ValidationError('Code postal invalide.');
+	}
+}
+
 export function validateRegistrationPayload(payload) {
 	const accountType = normalizeAccountType(payload.accountType);
 	const email = normalizeEmail(payload.email);
@@ -48,12 +63,11 @@ export function validateRegistrationPayload(payload) {
 	const prenom = trim(payload.prenom);
 	const password = String(payload.password || '');
 
-	if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+	if (!email || !EMAIL_REGEX.test(email)) {
 		throw new ValidationError('Adresse email invalide.');
 	}
-	if (!nom || !prenom) {
-		throw new ValidationError('Le nom et le prenom sont requis.');
-	}
+	validateName(nom, 'Nom');
+	validateName(prenom, 'Prenom');
 	if (password.length < 8) {
 		throw new ValidationError('Le mot de passe doit contenir au moins 8 caracteres.');
 	}
@@ -79,6 +93,7 @@ export function validateRegistrationPayload(payload) {
 		if (!adresseLigne || !codePostal || !ville) {
 			throw new ValidationError("L'adresse de l'entreprise est requise.");
 		}
+		validatePostalCode(codePostal);
 		normalized.entreprise = {
 			nom: nomEntreprise,
 			siret,
