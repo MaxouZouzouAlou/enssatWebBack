@@ -5,6 +5,7 @@
 --  sont remplacées par des TRIGGERS BEFORE INSERT / UPDATE.
 -- =============================================================
 
+DROP DATABASE IF EXISTS localzh;
 CREATE DATABASE IF NOT EXISTS localzh;
 USE localzh;
 
