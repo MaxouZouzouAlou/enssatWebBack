@@ -108,12 +108,12 @@ CREATE TABLE Produit (
     idProduit              INT           PRIMARY KEY AUTO_INCREMENT,
     idProfessionnel        INT           NOT NULL,
     nom                    VARCHAR(255)  NOT NULL,
-    nature                 VARCHAR(100),
+    nature                 ENUM('Légume', 'Fruit', 'Viande', 'Boulangerie', 'Poisson', 'Laitier', 'Autre') NOT NULL,
     bio                    BOOLEAN       NOT NULL DEFAULT FALSE,
     prix                   DECIMAL(10,2) NOT NULL,
-    tva                    DECIMAL(5,2)  NOT NULL DEFAULT 0,
+    tva                DECIMAL(5,2)  NOT NULL DEFAULT 0,
     reductionProfessionnel DECIMAL(5,2)  NOT NULL DEFAULT 0,
-    stock                  INT           NOT NULL DEFAULT 0,
+    stock                  FLOAT(5,3)           NOT NULL DEFAULT 0,
     visible                BOOLEAN       NOT NULL DEFAULT TRUE,
     CONSTRAINT fk_produit_professionnel
         FOREIGN KEY (idProfessionnel) REFERENCES Professionnel(idProfessionnel)
@@ -263,7 +263,7 @@ DELIMITER ;
 CREATE TABLE LigneCommande (
     idCommande INT           NOT NULL,
     idProduit  INT           NOT NULL,
-    quantite   INT           NOT NULL DEFAULT 1,
+    quantite   FLOAT(5,3)    NOT NULL DEFAULT 1,
     prixTTC    DECIMAL(10,2) NOT NULL,
     PRIMARY KEY (idCommande, idProduit),
     CONSTRAINT fk_lc_commande
