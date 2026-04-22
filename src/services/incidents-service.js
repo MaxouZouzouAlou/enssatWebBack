@@ -32,11 +32,10 @@ export async function resolveIncidentActor(authUser) {
 			u.nom,
 			u.prenom,
 			u.email,
-			admin.idAdmin AS adminId,
+			u.idAdmin AS adminId,
 			superAdmin.idAdmin AS superAdminId
 		 FROM Utilisateur u
-		 LEFT JOIN Admin admin ON admin.idAdmin = u.id
-		 LEFT JOIN SuperAdmin superAdmin ON superAdmin.idAdmin = admin.idAdmin
+		 LEFT JOIN SuperAdmin superAdmin ON superAdmin.idAdmin = u.idAdmin
 		 WHERE LOWER(u.email) = ?
 		 LIMIT 1`,
 		[email]
