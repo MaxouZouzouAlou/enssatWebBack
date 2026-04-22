@@ -1,0 +1,1445 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestion des Commandes</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #1a1a1a;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            background: #2a2a2a;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 30px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .header h1 {
+            color: white;
+            margin: 0;
+            font-size: 1.8em;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+        }
+        
+        .user-info {
+            color: #aaa;
+            font-size: 0.95em;
+        }
+        
+        .user-info p {
+            margin: 5px 0;
+        }
+        
+        .user-info strong {
+            color: #4CAF50;
+        }
+        
+        h1 {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+        }
+        
+        .content {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .checkout-section {
+            display: grid;
+            grid-template-columns: 1.5fr 1fr;
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .card {
+            background: #2a2a2a;
+            border-radius: 10px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            border-left: 4px solid #4CAF50;
+        }
+        
+        .card h2 {
+            color: #4CAF50;
+            margin-bottom: 20px;
+            font-size: 1.5em;
+            border-bottom: 2px solid #4CAF50;
+            padding-bottom: 10px;
+        }
+        
+        .form-group {
+            margin-bottom: 15px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #ddd;
+        }
+        
+        input, select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #444;
+            border-radius: 5px;
+            font-size: 1em;
+            background-color: #333;
+            color: #ddd;
+            transition: border-color 0.3s;
+        }
+        
+        input:focus, select:focus {
+            outline: none;
+            border-color: #4CAF50;
+            box-shadow: 0 0 5px rgba(76, 175, 80, 0.3);
+        }
+        
+        button {
+            width: 100%;
+            padding: 12px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background-color 0.3s;
+            margin-top: 10px;
+        }
+        
+        button:hover {
+            background-color: #45a049;
+        }
+        
+        button:active {
+            transform: scale(0.98);
+        }
+        
+        .btn-delete {
+            background-color: #e74c3c;
+            padding: 8px 12px;
+            width: auto;
+            margin-top: 0;
+            font-size: 0.9em;
+        }
+        
+        .btn-delete:hover {
+            background-color: #c0392b;
+        }
+        
+        .message {
+            padding: 12px;
+            border-radius: 5px;
+            margin-top: 15px;
+            display: none;
+        }
+        
+        .message.success {
+            background-color: #1b5e20;
+            color: #c8e6c9;
+            border: 1px solid #388e3c;
+            display: block;
+        }
+        
+        .message.error {
+            background-color: #b71c1c;
+            color: #ffcdd2;
+            border: 1px solid #d32f2f;
+            display: block;
+        }
+        
+        .message.info {
+            background-color: #01579b;
+            color: #b3e5fc;
+            border: 1px solid #0288d1;
+            display: block;
+        }
+        
+        .commands-list {
+            grid-column: 1 / -1;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+        }
+        
+        table thead {
+            background-color: #333;
+        }
+        
+        table th, table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #444;
+            color: #ddd;
+        }
+        
+        table th {
+            background-color: #4CAF50;
+            color: white;
+            font-weight: 600;
+        }
+        
+        table tbody tr:hover {
+            background-color: #333;
+        }
+        
+        .no-data {
+            text-align: center;
+            color: #777;
+            padding: 20px;
+            font-style: italic;
+        }
+        
+        .actions {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .refresh-btn {
+            background-color: #27ae60;
+            margin-bottom: 15px;
+        }
+        
+        .refresh-btn:hover {
+            background-color: #229954;
+        }
+        
+        .loading {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            background-color: #4CAF50;
+            border-radius: 50%;
+            animation: pulse 1s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: 0.5;
+            }
+        }
+        
+        .cart-item {
+            background: #333;
+            padding: 15px;
+            margin-bottom: 10px;
+            border-radius: 5px;
+            border-left: 3px solid #4CAF50;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            color: #ddd;
+        }
+        
+        .cart-item-info {
+            flex: 1;
+        }
+        
+        .cart-item-name {
+            font-weight: 600;
+            color: #fff;
+            margin-bottom: 5px;
+        }
+        
+        .cart-item-price {
+            color: #4CAF50;
+            font-size: 1.1em;
+            font-weight: 600;
+        }
+        
+        .cart-item-remove {
+            background-color: #e74c3c;
+            padding: 8px 12px;
+            margin-left: 10px;
+            font-size: 0.85em;
+            width: auto;
+            margin-top: 0;
+        }
+        
+        .cart-item-remove:hover {
+            background-color: #c0392b;
+        }
+        
+        .cart-summary {
+            background: #333;
+            padding: 15px;
+            border-radius: 5px;
+            border-top: 2px solid #4CAF50;
+            margin: 20px 0;
+        }
+        
+        .cart-total {
+            font-size: 1.3em;
+            font-weight: 600;
+            color: #4CAF50;
+            text-align: right;
+            margin-bottom: 15px;
+        }
+        
+        .empty-cart {
+            text-align: center;
+            color: #777;
+            padding: 40px 20px;
+            font-style: italic;
+        }
+        
+        @media (max-width: 768px) {
+            .content {
+                grid-template-columns: 1fr;
+            }
+            
+            .commands-list {
+                grid-column: 1;
+            }
+            
+            .checkout-section {
+                grid-template-columns: 1fr;
+            }
+            
+            .header {
+                flex-direction: column;
+                text-align: center;
+            }
+            
+            .user-info {
+                margin-top: 15px;
+            }
+        }
+        
+        .command-row {
+            background: #333;
+            border: 1px solid #444;
+            border-radius: 5px;
+            margin-bottom: 10px;
+            overflow: hidden;
+        }
+        
+        .command-header {
+            padding: 15px;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: background-color 0.3s;
+        }
+        
+        .command-header:hover {
+            background-color: #3a3a3a;
+        }
+        
+        .command-header-info {
+            flex: 1;
+        }
+        
+        .command-header-id {
+            font-weight: 600;
+            color: #4CAF50;
+            font-size: 1.1em;
+        }
+        
+        .command-header-meta {
+            color: #aaa;
+            font-size: 0.9em;
+            margin-top: 5px;
+        }
+        
+        .command-toggle {
+            color: #4CAF50;
+            font-weight: bold;
+            font-size: 1.2em;
+            transition: transform 0.3s;
+        }
+        
+        .command-row.expanded .command-toggle {
+            transform: rotate(180deg);
+        }
+        
+        .command-details {
+            display: none;
+            padding: 15px;
+            background: #2a2a2a;
+            border-top: 1px solid #444;
+        }
+        
+        .command-row.expanded .command-details {
+            display: block;
+        }
+        
+        .command-item {
+            background: #333;
+            padding: 10px;
+            margin-bottom: 10px;
+            border-radius: 5px;
+            border-left: 3px solid #4CAF50;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .command-item-info {
+            flex: 1;
+        }
+        
+        .command-item-name {
+            font-weight: 600;
+            color: #fff;
+        }
+        
+        .command-item-qty {
+            color: #aaa;
+            font-size: 0.9em;
+            margin-top: 3px;
+        }
+        
+        .command-item-price {
+            color: #4CAF50;
+            font-weight: 600;
+        }
+        
+        .payment-options {
+            margin-top: 20px;
+            padding: 15px;
+            background: #333;
+            border-radius: 5px;
+        }
+        
+        .payment-options label {
+            display: flex;
+            align-items: center;
+            margin-bottom: 15px;
+            font-weight: normal;
+            color: #ddd;
+        }
+        
+        .payment-options input[type="radio"] {
+            width: auto;
+            margin-right: 10px;
+            cursor: pointer;
+        }
+        
+        .price-options {
+            margin-top: 20px;
+            padding: 15px;
+            background: #333;
+            border-radius: 5px;
+        }
+        
+        .price-option {
+            display: flex;
+            align-items: center;
+            margin-bottom: 15px;
+            font-weight: normal;
+            color: #ddd;
+        }
+        
+        .price-option input[type="radio"] {
+            width: auto;
+            margin-right: 10px;
+            cursor: pointer;
+        }
+        
+        .price-breakdown {
+            margin-top: 15px;
+            padding: 15px;
+            background: #2a2a2a;
+            border-radius: 5px;
+            border-left: 3px solid #4CAF50;
+        }
+        
+        .price-line {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            color: #ddd;
+        }
+        
+        .price-line strong {
+            color: #4CAF50;
+        }
+        
+        .price-line.total {
+            border-top: 2px solid #4CAF50;
+            padding-top: 10px;
+            margin-top: 10px;
+            font-size: 1.2em;
+            color: #4CAF50;
+        }
+        
+        .cart-item-container {
+            display: flex;
+            gap: 15px;
+            align-items: flex-start;
+        }
+        
+        .cart-item-image {
+            width: 80px;
+            height: 80px;
+            object-fit: cover;
+            border-radius: 5px;
+            flex-shrink: 0;
+        }
+        
+        .cart-item-details {
+            flex: 1;
+        }
+        
+        .cart-item-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+            margin-bottom: 10px;
+        }
+        
+        .cart-item-title {
+            font-weight: 600;
+            color: #fff;
+        }
+        
+        .cart-item-remove {
+            background-color: #e74c3c;
+            padding: 6px 10px;
+            font-size: 0.75em;
+            width: auto;
+            margin: 0;
+        }
+        
+        .cart-item-meta {
+            color: #aaa;
+            font-size: 0.9em;
+            margin-bottom: 8px;
+        }
+        
+        .cart-item-price {
+            color: #4CAF50;
+            font-weight: 600;
+            margin-bottom: 10px;
+        }
+        
+        .delivery-modes {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        
+        .mode-option {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 6px 10px;
+            background: #333;
+            border: 1px solid #444;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.85em;
+            color: #ddd;
+            transition: all 0.2s;
+        }
+        
+        .mode-option input[type="radio"] {
+            width: auto;
+            margin: 0;
+            cursor: pointer;
+        }
+        
+        .mode-option.unavailable {
+            opacity: 0.5;
+            text-decoration: line-through;
+            color: #e74c3c;
+            cursor: not-allowed;
+        }
+        
+        .mode-option:not(.unavailable):hover {
+            border-color: #4CAF50;
+            background: #2a2a2a;
+        }
+        
+        .mode-option.selected {
+            border-color: #4CAF50;
+            background: #1b5e20;
+        }
+        
+        .delivery-lists {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+            margin-top: 20px;
+        }
+        
+        .delivery-list {
+            background: #333;
+            border-radius: 5px;
+            padding: 15px;
+            border-left: 3px solid #4CAF50;
+        }
+        
+        .delivery-list h3 {
+            color: #4CAF50;
+            margin-bottom: 15px;
+            font-size: 1.1em;
+        }
+        
+        .delivery-list-item {
+            background: #2a2a2a;
+            padding: 12px;
+            margin-bottom: 10px;
+            border-radius: 4px;
+            border-left: 2px solid #4CAF50;
+            color: #ddd;
+        }
+        
+        .delivery-list-item-name {
+            font-weight: 600;
+            margin-bottom: 5px;
+        }
+        
+        .delivery-list-item-details {
+            font-size: 0.85em;
+            color: #aaa;
+        }
+        
+        .delivery-list-item-price {
+            color: #4CAF50;
+            font-weight: 600;
+            margin-top: 5px;
+        }
+        
+        .empty-list {
+            text-align: center;
+            color: #777;
+            font-style: italic;
+            padding: 20px;
+        }
+        
+        .quantity-controls {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: #333;
+            border: 1px solid #444;
+            border-radius: 4px;
+            padding: 4px 8px;
+            width: fit-content;
+        }
+        
+        .qty-btn {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            width: 28px;
+            height: 28px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 1.1em;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background-color 0.2s;
+        }
+        
+        .qty-btn:hover {
+            background: #45a049;
+        }
+        
+        .qty-btn:active {
+            transform: scale(0.95);
+        }
+        
+        .qty-display {
+            min-width: 30px;
+            text-align: center;
+            color: #ddd;
+            font-weight: 600;
+        }
+        
+        @media (max-width: 768px) {
+            .delivery-lists {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📦 Gestion des Commandes</h1>
+            <div class="user-info">
+                <p>ID Utilisateur: <strong id="userId">-</strong></p>
+                <p>Type de compte: <strong id="userType">-</strong></p>
+            </div>
+        </div>
+        
+        <div class="checkout-section">
+            <!-- Panier -->
+            <div class="card">
+                <h2>🛒 Mon Panier</h2>
+                <div id="cartItems" class="empty-cart">Aucun article dans le panier</div>
+                
+                <!-- <div id="cartSummary" style="display: none;">
+                    Listes de livraison
+                    <div class="delivery-lists">
+                        <div class="delivery-list">
+                            <h3>🚚 Livraison</h3>
+                            <div id="deliveryList" class="empty-list">Aucun article</div>
+                        </div>
+                        <div class="delivery-list">
+                            <h3>📍 Points Relais</h3>
+                            <div id="relayList" class="empty-list">Aucun article</div>
+                        </div>
+                        <div class="delivery-list">
+                            <h3>🏪 Points de Vente</h3>
+                            <div id="storeList" class="empty-list">Aucun article</div>
+                        </div>
+                    </div>
+                    
+                    <div class="cart-summary">
+                        <div class="form-group">
+                            <label for="deliveryMode">Mode de Livraison Global *</label>
+                            <select id="deliveryMode">
+                                <option value="">-- Sélectionnez un mode --</option>
+                                <option value="Livraison">🚚 Livraison</option>
+                                <option value="Point relais">📍 Point relais</option>
+                                <option value="Lieu de vente">🏪 Lieu de vente</option>
+                            </select>
+                        </div>
+                        
+                        <div id="priceOptions" class="price-options" style="display: none;">
+                            <div class="price-option">
+                                <input type="radio" id="priceTTC" name="priceType" value="TTC" checked>
+                                <label for="priceTTC" style="margin: 0; font-weight: normal;">Prix TTC (Toutes Taxes Comprises)</label>
+                            </div>
+                            <div class="price-option">
+                                <input type="radio" id="priceHT" name="priceType" value="HT">
+                                <label for="priceHT" style="margin: 0; font-weight: normal;">Prix HT (Hors Taxes)</label>
+                            </div>
+                        </div>
+                        
+                        <div class="payment-options">
+                            <h3 style="color: #4CAF50; margin-bottom: 15px; font-size: 1em;">Mode de Paiement</h3>
+                            <label style="display: flex; align-items: center;">
+                                <input type="radio" name="payment" value="carte" checked>
+                                <span>💳 Carte Bancaire</span>
+                            </label>
+                            <label style="display: flex; align-items: center;">
+                                <input type="radio" name="payment" value="paypal">
+                                <span>🅿️ PayPal</span>
+                            </label>
+                            <label style="display: flex; align-items: center;">
+                                <input type="radio" name="payment" value="virement">
+                                <span>🏦 Virement Bancaire</span>
+                            </label>
+                            <label style="display: flex; align-items: center;">
+                                <input type="radio" name="payment" value="cb">
+                                <span>💰 Espèces à la livraison</span>
+                            </label>
+                        </div>
+                        
+                        <div class="price-breakdown">
+                            <div class="price-line">
+                                <span>Sous-total:</span>
+                                <span id="subtotalPrice">0,00€</span>
+                            </div>
+                            <div class="price-line" id="taxLine" style="display: none;">
+                                <span>TVA (20%):</span>
+                                <span id="taxPrice">0,00€</span>
+                            </div>
+                            <div class="price-line total">
+                                <span>Total:</span>
+                                <span id="totalPrice">0,00€</span>
+                            </div>
+                        </div>
+                        
+                        <button id="orderBtn">Passer la Commande</button>
+                        <div id="orderMessage" class="message"></div>
+                    </div>
+                </div> -->
+            </div>
+            
+            <!-- Résumé de commande -->
+            <div class="card">
+                <h2>📝 Résumé</h2>
+                <div id="cartSummary" style="display: none;">
+                    <!-- Listes de livraison -->
+                    <div class="delivery-lists">
+                        <div class="delivery-list">
+                            <h3>🚚 Livraison</h3>
+                            <div id="deliveryList" class="empty-list">Aucun article</div>
+                        </div>
+                        <div class="delivery-list">
+                            <h3>📍 Points Relais</h3>
+                            <div id="relayList" class="empty-list">Aucun article</div>
+                        </div>
+                        <div class="delivery-list">
+                            <h3>🏪 Points de Vente</h3>
+                            <div id="storeList" class="empty-list">Aucun article</div>
+                        </div>
+                    </div>
+                    
+                    <div class="cart-summary">
+                        <div class="form-group">
+                            <!-- <label for="deliveryMode">Mode de Livraison Global *</label>
+                            <select id="deliveryMode">
+                                <option value="">-- Sélectionnez un mode --</option>
+                                <option value="Livraison">🚚 Livraison</option>
+                                <option value="Point relais">📍 Point relais</option>
+                                <option value="Lieu de vente">🏪 Lieu de vente</option>
+                            </select> -->
+                        </div>
+                        
+                        <div id="priceOptions" class="price-options" style="display: none;">
+                            <div class="price-option">
+                                <input type="radio" id="priceTTC" name="priceType" value="TTC" checked>
+                                <label for="priceTTC" style="margin: 0; font-weight: normal;">Prix TTC (Toutes Taxes Comprises)</label>
+                            </div>
+                            <div class="price-option">
+                                <input type="radio" id="priceHT" name="priceType" value="HT">
+                                <label for="priceHT" style="margin: 0; font-weight: normal;">Prix HT (Hors Taxes)</label>
+                            </div>
+                        </div>
+                        
+                        <div class="payment-options">
+                            <h3 style="color: #4CAF50; margin-bottom: 15px; font-size: 1em;">Mode de Paiement</h3>
+                            <label style="display: flex; align-items: center;">
+                                <input type="radio" name="payment" value="carte" checked>
+                                <span>💳 Carte Bancaire</span>
+                            </label>
+                            <label style="display: flex; align-items: center;">
+                                <input type="radio" name="payment" value="paypal">
+                                <span>🅿️ PayPal</span>
+                            </label>
+
+                            <label style="display: flex; align-items: center;">
+                                <input type="radio" name="payment" value="cb">
+                                <span>💰 Espèces à la livraison</span>
+                            </label>
+                        </div>
+                        
+                        <div class="price-breakdown">
+                            <div class="price-line">
+                                <span>Sous-total:</span>
+                                <span id="subtotalPrice">0,00€</span>
+                            </div>
+                            <div class="price-line" id="taxLine" style="display: none;">
+                                <span>TVA (20%):</span>
+                                <span id="taxPrice">0,00€</span>
+                            </div>
+                            <div class="price-line total">
+                                <span>Total:</span>
+                                <span id="totalPrice">0,00€</span>
+                            </div>
+                        </div>
+                        
+
+                    </div>
+                </div>
+                <div id="summaryContent">
+                    <p style="color: #aaa;">Sélectionnez des articles et un mode de livraison pour voir le résumé</p>
+                </div>
+                <button id="orderBtn">Passer la Commande</button>
+                <div id="orderMessage" class="message"></div>
+            </div>
+        </div>
+        
+        <div class="content">
+            <!-- Historique des commandes -->
+            <div class="card commands-list">
+                <h2>📋 Historique de mes Commandes</h2>
+                <div id="loadingIndicator" style="display: none;">
+                    <div class="loading"></div> Chargement...
+                </div>
+                <div id="commandsList">
+                    <div id="noData" class="no-data">Aucune commande</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        const API_URL = '/command';
+        const CART_API_URL = '/shoopingCart';
+        
+        // Données du panier
+        let cart = [];
+        let cartId = 1; // ID du panier de l'utilisateur - À adapter selon votre système d'authentification
+        
+        // Commandes avec détails (simulées)
+        let commandsWithDetails = [];
+        
+        // Informations utilisateur simulées - TODO
+        const userInfo = {
+            id: 'USER_001',
+            type: 'particulier'
+        };
+        
+        // Initialiser
+        window.addEventListener('load', () => {
+            displayUserInfo();
+            setupEventListeners();
+            loadCartFromAPI();
+            updateSummary();
+            loadCommands();
+        });
+        
+        // Afficher les informations utilisateur
+        function displayUserInfo() {
+            document.getElementById('userId').textContent = userInfo.id;
+            document.getElementById('userType').textContent = userInfo.type === 'particulier' ? 'Particulier' : 'Professionnel';
+            
+            // Afficher les options HT/TTC pour tous les utilisateurs
+            document.getElementById('priceOptions').style.display = 'block';
+        }
+        
+        // Configuration des écouteurs d'événements
+        function setupEventListeners() {
+            document.querySelectorAll('input[name="priceType"]').forEach(radio => {
+                radio.addEventListener('change', () => {
+                    displayCart();
+                    updateSummary();
+                });
+            });
+            document.querySelectorAll('input[name="payment"]').forEach(radio => {
+                radio.addEventListener('change', updateSummary);
+            });
+            document.getElementById('orderBtn').addEventListener('click', placeOrder);
+        }
+        
+        // Charger le panier depuis l'API
+        async function loadCartFromAPI() {
+            try {
+                const response = await fetch(`${CART_API_URL}/${cartId}/items`);
+                
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({}));
+                    console.error(`Erreur API: ${response.status}`, errorData);
+                    throw new Error(`Erreur ${response.status}: ${errorData.error || 'Impossible de charger le panier'}`);
+                }
+                
+                const items = await response.json();
+                
+                // Transformer les données reçues du serveur pour correspondre à la structure locale
+                cart = items.map(item => ({
+                    img: `imgs/product-${item.idProduit}.jpg`, // À adapter selon votre système
+                    id: item.idProduit,
+                    name: item.nom || `Produit ${item.idProduit}`,
+                    price: parseFloat(item.prix) || 0,
+                    qty: parseInt(item.quantite) || 1,
+                    deliveryMode: 'Livraison',
+                    availableModes: ['Livraison', 'Point relais', 'Lieu de vente']
+                }));
+                
+                displayCart();
+                updateSummary();
+            } catch (error) {
+                console.error('Erreur lors du chargement du panier:', error);
+                cart = [];
+                displayCart();
+            }
+        }
+        
+        // Ajouter un article au panier via l'API
+        async function addToCartAPI(productId, quantity = 1) {
+            try {
+                const response = await fetch(`${CART_API_URL}/item`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        idPanier: cartId,
+                        idProduit: productId
+                    })
+                });
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.error || 'Failed to add item to cart');
+                }
+                
+                // Recharger le panier pour afficher les changements
+                await loadCartFromAPI();
+            } catch (error) {
+                console.error('Erreur lors de l\'ajout au panier:', error);
+                showMessage(document.getElementById('orderMessage'), `❌ ${error.message}`, 'error');
+            }
+        }
+        
+        // Retirer un article du panier (supprimer complètement)
+        async function removeFromCartAPI(itemId) {
+            try {
+                const response = await fetch(`${CART_API_URL}/list`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        idPanier: cartId,
+                        idProduit: itemId
+                    })
+                });
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.error || 'Failed to remove item from cart');
+                }
+                
+                // Recharger le panier
+                await loadCartFromAPI();
+            } catch (error) {
+                console.error('Erreur lors de la suppression:', error);
+                showMessage(document.getElementById('orderMessage'), `❌ ${error.message}`, 'error');
+            }
+        }
+        
+        // Diminuer la quantité d'un article (supprimer un seul)
+        async function decreaseQtyAPI(itemId) {
+            try {
+                const response = await fetch(`${CART_API_URL}/single`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        idPanier: cartId,
+                        idProduit: itemId
+                    })
+                });
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.error || 'Failed to decrease quantity');
+                }
+                
+                // Recharger le panier
+                await loadCartFromAPI();
+            } catch (error) {
+                console.error('Erreur lors de la diminution:', error);
+                showMessage(document.getElementById('orderMessage'), `❌ ${error.message}`, 'error');
+            }
+        }
+        
+        // Vider le panier
+        async function emptyCartAPI() {
+            try {
+                const response = await fetch(`${CART_API_URL}/empty`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        idPanier: cartId
+                    })
+                });
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.error || 'Failed to empty cart');
+                }
+                
+                // Recharger le panier
+                await loadCartFromAPI();
+            } catch (error) {
+                console.error('Erreur lors du vidage du panier:', error);
+                showMessage(document.getElementById('orderMessage'), `❌ ${error.message}`, 'error');
+            }
+        }
+        
+        // Vérifier si le panier est vide
+        function isCartEmpty() {
+            return cart.length === 0;
+        }
+        
+        // Afficher le panier
+        function displayCart() {
+            const cartItemsDiv = document.getElementById('cartItems');
+            const cartSummaryDiv = document.getElementById('cartSummary');
+            
+            if (cart.length === 0) {
+                cartItemsDiv.innerHTML = 'Aucun article dans le panier';
+                cartSummaryDiv.style.display = 'none';
+                return;
+            }
+            
+            cartItemsDiv.innerHTML = cart.map((item, index) => `
+                <div class="cart-item" style="background: #333; padding: 15px; margin-bottom: 10px; border-radius: 5px; border-left: 3px solid #4CAF50;">
+                    <div class="cart-item-container">
+                        <img src="${item.img}" alt="${item.name}" class="cart-item-image" style="background: #444;">
+                        <div class="cart-item-details" style="flex: 1;">
+                            <div class="cart-item-header" style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom: 12px;">
+                                <div style="flex: 1;">
+                                    <div class="cart-item-title">${item.name}</div>
+                                    <div class="cart-item-price" style="margin: 8px 0;">${(item.price * item.qty).toFixed(2).replace('.', ',')}€</div>
+                                    <div style="display: flex; gap: 15px; align-items: center;">
+                                        <div style="color: #aaa; font-size: 0.9em;">Unitaire: ${item.price.toFixed(2).replace('.', ',')}€</div>
+                                        <div class="quantity-controls">
+                                            <button class="qty-btn" onclick="updateQuantityAPI(${item.id}, -1)">−</button>
+                                            <div class="qty-display">${item.qty}</div>
+                                            <button class="qty-btn" onclick="updateQuantityAPI(${item.id}, 1)">+</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <button class="btn-delete" onclick="removeFromCartAPI(${item.id})" style="margin-left: auto;">Retirer</button>
+                            </div>
+                            <div>
+                                <label style="color: #ddd; font-size: 0.9em; margin-bottom: 8px; display: block;">Mode de livraison:</label>
+                                <div class="delivery-modes">
+                                    ${item.availableModes.map(mode => {
+                                        const isUnavailable = !item.availableModes.includes(mode);
+                                        const modeEmoji = mode === 'Livraison' ? '🚚' : mode === 'Point relais' ? '📍' : '🏪';
+                                        const isSelected = item.deliveryMode === mode;
+                                        return `
+                                            <label class="mode-option ${isUnavailable ? 'unavailable' : ''} ${isSelected ? 'selected' : ''}" style="cursor: ${isUnavailable ? 'not-allowed' : 'pointer'};">
+                                                <input type="radio" name="deliveryMode_${item.id}" value="${mode}" ${isSelected ? 'checked' : ''} ${isUnavailable ? 'disabled' : ''} onchange="updateItemDeliveryMode(${item.id}, '${mode}')">
+                                                <span>${modeEmoji} ${mode}</span>
+                                            </label>
+                                        `;
+                                    }).join('')}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+            
+            updateCartTotal();
+            updateDeliveryLists();
+            cartSummaryDiv.style.display = 'block';
+        }
+        
+        // Mettre à jour le mode de livraison d'un article
+        function updateItemDeliveryMode(itemId, mode) {
+            const item = cart.find(i => i.id === itemId);
+            if (item) {
+                item.deliveryMode = mode;
+                displayCart();
+                updateDeliveryLists();
+                updateSummary();
+            }
+        }
+        
+        // Augmenter ou diminuer la quantité d'un article
+        async function updateQuantityAPI(itemId, change) {
+            const item = cart.find(i => i.id === itemId);
+            if (!item) return;
+            
+            const newQty = item.qty + change;
+            
+            if (change > 0) {
+                // Augmenter: ajouter via POST /item
+                await addToCartAPI(itemId, change);
+            } else if (change < 0) {
+                // Diminuer: utiliser DELETE /single
+                await decreaseQtyAPI(itemId);
+            }
+        }
+        
+        // Augmenter la quantité d'un article
+        function increaseQty(itemId) {
+            const item = cart.find(i => i.id === itemId);
+            if (item) {
+                item.qty += 1;
+                displayCart();
+                updateSummary();
+            }
+        }
+        
+        // Diminuer la quantité d'un article
+        function decreaseQty(itemId) {
+            const item = cart.find(i => i.id === itemId);
+            if (item && item.qty > 1) {
+                item.qty -= 1;
+                displayCart();
+                updateSummary();
+            }
+        }
+        
+        // Mettre à jour les listes de livraison
+        function updateDeliveryLists() {
+            const deliveryList = document.getElementById('deliveryList');
+            const relayList = document.getElementById('relayList');
+            const storeList = document.getElementById('storeList');
+            
+            const byDelivery = cart.filter(item => item.deliveryMode === 'Livraison');
+            const byRelay = cart.filter(item => item.deliveryMode === 'Point relais');
+            const byStore = cart.filter(item => item.deliveryMode === 'Lieu de vente');
+            
+            deliveryList.innerHTML = byDelivery.length === 0 ? '<div class="empty-list">Aucun article</div>' :
+                byDelivery.map(item => `
+                    <div class="delivery-list-item">
+                        <div class="delivery-list-item-name">${item.name}</div>
+                        <div class="delivery-list-item-details">Quantité: ${item.qty}</div>
+                        <div class="delivery-list-item-price">${(item.price * item.qty).toFixed(2).replace('.', ',')}€</div>
+                    </div>
+                `).join('');
+            
+            relayList.innerHTML = byRelay.length === 0 ? '<div class="empty-list">Aucun article</div>' :
+                byRelay.map(item => `
+                    <div class="delivery-list-item">
+                        <div class="delivery-list-item-name">${item.name}</div>
+                        <div class="delivery-list-item-details">Quantité: ${item.qty}</div>
+                        <div class="delivery-list-item-price">${(item.price * item.qty).toFixed(2).replace('.', ',')}€</div>
+                    </div>
+                `).join('');
+            
+            storeList.innerHTML = byStore.length === 0 ? '<div class="empty-list">Aucun article</div>' :
+                byStore.map(item => `
+                    <div class="delivery-list-item">
+                        <div class="delivery-list-item-name">${item.name}</div>
+                        <div class="delivery-list-item-details">Quantité: ${item.qty}</div>
+                        <div class="delivery-list-item-price">${(item.price * item.qty).toFixed(2).replace('.', ',')}€</div>
+                    </div>
+                `).join('');
+        }
+        
+        // Mettre à jour le total du panier
+        function updateCartTotal() {
+            const priceType = document.querySelector('input[name="priceType"]:checked')?.value || 'TTC';
+            
+            let subtotal = cart.reduce((sum, item) => sum + (item.price * item.qty), 0);
+            let tax = 0;
+            let total = subtotal;
+            
+            if (priceType === 'HT') {
+                // Afficher HT
+                document.getElementById('subtotalPrice').textContent = subtotal.toFixed(2).replace('.', ',') + '€';
+                document.getElementById('taxLine').style.display = 'none';
+                document.getElementById('totalPrice').textContent = subtotal.toFixed(2).replace('.', ',') + '€';
+            } else {
+                // Afficher TTC
+                tax = subtotal * 0.20;
+                total = subtotal + tax;
+                document.getElementById('subtotalPrice').textContent = subtotal.toFixed(2).replace('.', ',') + '€';
+                document.getElementById('taxLine').style.display = 'flex';
+                document.getElementById('taxPrice').textContent = tax.toFixed(2).replace('.', ',') + '€';
+                document.getElementById('totalPrice').textContent = total.toFixed(2).replace('.', ',') + '€';
+            }
+        }
+        
+        // Retirer un article du panier
+        function removeFromCart(itemId) {
+            removeFromCartAPI(itemId);
+        }
+        
+        // Mettre à jour la quantité d'un article
+        function updateQuantity(itemId, change) {
+            updateQuantityAPI(itemId, change);
+        }
+        
+        // Mettre à jour le résumé
+        function updateSummary() {
+            const payment = document.querySelector('input[name="payment"]:checked')?.value;
+            const priceType = document.querySelector('input[name="priceType"]:checked')?.value || 'TTC';
+            const summaryDiv = document.getElementById('summaryContent');
+            
+            if (cart.length === 0) {
+                summaryDiv.innerHTML = '<p style="color: #aaa;">Sélectionnez des articles et un mode de livraison pour voir le résumé</p>';
+                return;
+            }
+            
+            let subtotal = cart.reduce((sum, item) => sum + (item.price * item.qty), 0);
+            let tax = subtotal * 0.20;
+            let total = subtotal + tax;
+            
+            if (priceType === 'HT') {
+                total = subtotal;
+            }
+            
+            const paymentLabel = {
+                'carte': '💳 Carte Bancaire',
+                'paypal': '🅿️ PayPal',
+                'cb': '💰 Espèces'
+            }[payment];
+            
+            const byDelivery = cart.filter(item => item.deliveryMode === 'Livraison');
+            const byRelay = cart.filter(item => item.deliveryMode === 'Point relais');
+            const byStore = cart.filter(item => item.deliveryMode === 'Lieu de vente');
+            
+            const deliveryTotal = byDelivery.reduce((sum, item) => sum + (item.price * item.qty), 0);
+            const relayTotal = byRelay.reduce((sum, item) => sum + (item.price * item.qty), 0);
+            const storeTotal = byStore.reduce((sum, item) => sum + (item.price * item.qty), 0);
+            
+            summaryDiv.innerHTML = `
+                <div style="color: #ddd;">
+                    <p><strong>Moyen de paiement:</strong><br>${paymentLabel}</p>
+                    <p style="margin-top: 15px;"><strong>Type de prix:</strong><br>${priceType === 'TTC' ? 'TTC (Taxes Comprises)' : 'HT (Hors Taxes)'}</p>
+                    <div style="margin-top: 15px; padding: 15px; background: #333; border-radius: 5px; border-left: 3px solid #4CAF50;">
+                        ${byDelivery.length > 0 ? `<div style="display: flex; justify-content: space-between; margin-bottom: 10px;"><span>🚚 Livraison:</span><strong>${deliveryTotal.toFixed(2).replace('.', ',')}€</strong></div>` : ''}
+                        ${byRelay.length > 0 ? `<div style="display: flex; justify-content: space-between; margin-bottom: 10px;"><span>📍 Points Relais:</span><strong>${relayTotal.toFixed(2).replace('.', ',')}€</strong></div>` : ''}
+                        ${byStore.length > 0 ? `<div style="display: flex; justify-content: space-between; margin-bottom: 10px;"><span>🏪 Points de Vente:</span><strong>${storeTotal.toFixed(2).replace('.', ',')}€</strong></div>` : ''}
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 10px; margin-top: 10px; padding-top: 10px; border-top: 1px solid #444;">
+                            <span>Sous-total:</span>
+                            <strong>${subtotal.toFixed(2).replace('.', ',')}€</strong>
+                        </div>
+                        ${priceType === 'TTC' ? `
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+                                <span>TVA (20%):</span>
+                                <strong>${tax.toFixed(2).replace('.', ',')}€</strong>
+                            </div>
+                        ` : ''}
+                        <div style="display: flex; justify-content: space-between; border-top: 2px solid #4CAF50; padding-top: 10px; font-size: 1.1em; color: #4CAF50;">
+                            <span><strong>Total:</strong></span>
+                            <strong>${total.toFixed(2).replace('.', ',')}€</strong>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+        
+        // Passer la commande
+        async function placeOrder() {
+            const messageDiv = document.getElementById('orderMessage');
+            
+            if (isCartEmpty()) {
+                showMessage(messageDiv, '❌ Votre panier est vide', 'error');
+                return;
+            }
+            
+            // Vérifier que tous les articles ont un mode de livraison sélectionné
+            if (cart.some(item => !item.deliveryMode)) {
+                showMessage(messageDiv, '❌ Veuillez sélectionner un mode de livraison pour tous les articles', 'error');
+                return;
+            }
+            
+            const prixTotal = cart.reduce((sum, item) => sum + (item.price * item.qty), 0);
+            
+            try {
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        items: cart.map(item => ({
+                            id: item.id,
+                            name: item.name,
+                            qty: item.qty,
+                            price: item.price,
+                            deliveryMode: item.deliveryMode
+                        })),
+                        prixTotal: parseFloat(prixTotal.toFixed(2))
+                    })
+                });
+                
+                if (response.ok) {
+                    showMessage(messageDiv, '✅ Commande passée avec succès!', 'success');
+                    // Vider le panier via l'API
+                    await emptyCartAPI();
+                    document.getElementById('deliveryMode').value = '';
+                    updateSummary();
+                    setTimeout(loadCommands, 500);
+                } else {
+                    const error = await response.json();
+                    showMessage(messageDiv, `❌ Erreur: ${error.error}`, 'error');
+                }
+            } catch (error) {
+                showMessage(messageDiv, `❌ Erreur de connexion: ${error.message}`, 'error');
+            }
+        }
+        // }
+        
+        // Charger les commandes
+        async function loadCommands() {
+            const loadingDiv = document.getElementById('loadingIndicator');
+            const commandsList = document.getElementById('commandsList');
+            const noData = document.getElementById('noData');
+            
+            loadingDiv.style.display = 'block';
+            
+            try {
+                const response = await fetch(API_URL);
+                const commands = await response.json();
+                
+                if (commands.length === 0) {
+                    commandsList.innerHTML = '<div id="noData" class="no-data">Aucune commande</div>';
+                } else {
+                    // Simuler des détails de commande
+                    commandsWithDetails = commands.map(cmd => ({
+                        ...cmd,
+                        items: [
+                            { name: 'Produit A', qty: 2, price: 29.99 },
+                            { name: 'Produit B', qty: 1, price: cmd.prixTotal / 2 }
+                        ]
+                    }));
+                    
+                    commandsList.innerHTML = commandsWithDetails.map((cmd, index) => `
+                        <div class="command-row" id="command-${index}">
+                            <div class="command-header" onclick="toggleCommand(${index})">
+                                <div class="command-header-info">
+                                    <div class="command-header-id">Commande #${cmd.idCommand}</div>
+                                    <div class="command-header-meta">
+                                        ${new Date(cmd.dateCommand).toLocaleString('fr-FR')} • ${cmd.modeLivraison} • ${cmd.prixTotal}€
+                                    </div>
+                                </div>
+                                <div class="command-toggle">▼</div>
+                            </div>
+                            <div class="command-details">
+                                <h4 style="color: #4CAF50; margin-bottom: 10px;">Articles de la commande:</h4>
+                                ${cmd.items.map(item => `
+                                    <div class="command-item">
+                                        <div class="command-item-info">
+                                            <div class="command-item-name">${item.name}</div>
+                                            <div class="command-item-qty">Quantité: ${item.qty}</div>
+                                        </div>
+                                        <div class="command-item-price">${(item.price * item.qty).toFixed(2)}€</div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    `).join('');
+                }
+            } catch (error) {
+                commandsList.innerHTML = '<div id="noData" class="no-data">ℹ️ Aucune commande (API indisponible)</div>';
+                console.log('Info: API de commandes indisponible -', error.message);
+            } finally {
+                loadingDiv.style.display = 'none';
+            }
+        }
+        
+        // Bascule l'affichage des détails d'une commande
+        function toggleCommand(index) {
+            const commandRow = document.getElementById(`command-${index}`);
+            commandRow.classList.toggle('expanded');
+        }
+        
+        // Afficher un message
+        function showMessage(element, message, type) {
+            element.textContent = message;
+            element.className = `message ${type}`;
+            setTimeout(() => {
+                element.className = 'message';
+            }, 5000);
+        }
+    </script>
+</body>
+</html>

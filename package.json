@@ -10,11 +10,13 @@
   "dependencies": {
     "dotenv": "^16.0.3",
     "express": "^4.18.2",
+    "moment-timezone": "^0.5.45",
     "mysql2": "^3.3.0",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^4.6.3"
   },
   "devDependencies": {
+    "html-validate": "^10.13.1",
     "nodemon": "^2.0.22"
   }
 }
