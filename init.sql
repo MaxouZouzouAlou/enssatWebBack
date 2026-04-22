@@ -601,6 +601,24 @@ END$$
 
 DELIMITER ;
 
+-- Vue : produits d'un panier avec détails produit
+CREATE OR REPLACE VIEW Vue_Panier_Produit AS
+SELECT
+    pp.idPanier,
+    pp.idProduit,
+    pp.quantite,
+    p.nom AS nomProduit,
+    p.nature,
+    p.bio,
+    p.prix,
+    p.tva,
+    p.reductionProfessionnel,
+    p.stock,
+    p.visible,
+    p.idProfessionnel
+FROM Panier_Produit pp
+JOIN Produit p ON pp.idProduit = p.idProduit;
+
 -- =============================================================
 --  FIN DU SCRIPT DE CRÉATION
 -- =============================================================
