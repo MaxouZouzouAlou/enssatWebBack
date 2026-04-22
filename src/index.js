@@ -8,11 +8,11 @@ import authProfileRouter from './routes/auth-profile.js';
 import incidentsRouter from './routes/incidents.js';
 import professionnelsRouter from './routes/professionnels.js';
 import usersRouter from './routes/users.js';
-const productsRouter = require('./routes/products');
-const shoppingCartRouter = require('./routes/shoppingCart');
+import productsRouter from './routes/products.js';
+import shoppingCartRouter from './routes/shoppingCart.js';
 
-const swaggerJsdoc = require('swagger-jsdoc');
-const swaggerUi = require('swagger-ui-express');
+import swaggerJsdoc from 'swagger-jsdoc';
+import swaggerUi from 'swagger-ui-express';
 
 dotenv.config();
 
