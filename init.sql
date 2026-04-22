@@ -9,6 +9,69 @@ CREATE DATABASE IF NOT EXISTS localzh;
 USE localzh;
 
 -- -------------------------------------------------------------
+-- 0. Better Auth (ajout adapte depuis feature/pierrick-login)
+-- -------------------------------------------------------------
+CREATE TABLE `user` (
+    id              VARCHAR(255) PRIMARY KEY,
+    name            VARCHAR(255) NOT NULL,
+    email           VARCHAR(255) NOT NULL UNIQUE,
+    emailVerified   BOOLEAN NOT NULL DEFAULT FALSE,
+    role            VARCHAR(50) NOT NULL DEFAULT 'user',
+    image           TEXT,
+    accountType     VARCHAR(50) DEFAULT 'particulier',
+    firstName       VARCHAR(100),
+    lastName        VARCHAR(100),
+    createdAt       DATETIME NOT NULL,
+    updatedAt       DATETIME NOT NULL
+);
+
+CREATE TABLE `session` (
+    id          VARCHAR(255) PRIMARY KEY,
+    expiresAt   DATETIME NOT NULL,
+    token       VARCHAR(255) NOT NULL UNIQUE,
+    createdAt   DATETIME NOT NULL,
+    updatedAt   DATETIME NOT NULL,
+    ipAddress   TEXT,
+    userAgent   TEXT,
+    userId      VARCHAR(255) NOT NULL,
+    CONSTRAINT fk_session_user
+        FOREIGN KEY (userId) REFERENCES `user`(id)
+        ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+CREATE TABLE `account` (
+    id                    VARCHAR(255) PRIMARY KEY,
+    accountId             VARCHAR(255) NOT NULL,
+    providerId            VARCHAR(255) NOT NULL,
+    userId                VARCHAR(255) NOT NULL,
+    accessToken           TEXT,
+    refreshToken          TEXT,
+    idToken               TEXT,
+    accessTokenExpiresAt  DATETIME,
+    refreshTokenExpiresAt DATETIME,
+    scope                 TEXT,
+    password              TEXT,
+    createdAt             DATETIME NOT NULL,
+    updatedAt             DATETIME NOT NULL,
+    CONSTRAINT fk_account_user
+        FOREIGN KEY (userId) REFERENCES `user`(id)
+        ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+CREATE TABLE `verification` (
+    id          VARCHAR(255) PRIMARY KEY,
+    identifier  VARCHAR(255) NOT NULL,
+    value       TEXT NOT NULL,
+    expiresAt   DATETIME NOT NULL,
+    createdAt   DATETIME NOT NULL,
+    updatedAt   DATETIME NOT NULL
+);
+
+CREATE INDEX idx_session_userId ON `session`(userId);
+CREATE INDEX idx_account_userId ON `account`(userId);
+CREATE INDEX idx_verification_identifier ON `verification`(identifier);
+
+-- -------------------------------------------------------------
 -- 1. SuperAdmin
 -- -------------------------------------------------------------
 CREATE TABLE SuperAdmin (
@@ -16,7 +79,7 @@ CREATE TABLE SuperAdmin (
 );
 
 -- -------------------------------------------------------------
--- 2. Utilisateur  (SuperAdmin "Est un" Utilisateur : 1-1)
+-- 2. Utilisateur
 -- -------------------------------------------------------------
 CREATE TABLE Utilisateur (
     id               INT          PRIMARY KEY AUTO_INCREMENT,
@@ -93,6 +156,31 @@ CREATE TABLE Professionnel_Entreprise (
         ON DELETE CASCADE ON UPDATE CASCADE
 );
 
+-- Mapping entre Better Auth et les profils metier de cette branche.
+CREATE TABLE AuthProfile (
+    authUserId       VARCHAR(255) PRIMARY KEY,
+    accountType      ENUM('particulier', 'professionnel', 'superadmin') NOT NULL,
+    particulierId    INT,
+    professionnelId  INT,
+    entrepriseId     INT,
+    createdAt        DATETIME NOT NULL,
+    updatedAt        DATETIME NOT NULL,
+    CONSTRAINT fk_auth_profile_user
+        FOREIGN KEY (authUserId) REFERENCES `user`(id)
+        ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_auth_profile_particulier
+        FOREIGN KEY (particulierId) REFERENCES Particulier(idParticulier)
+        ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_auth_profile_professionnel
+        FOREIGN KEY (professionnelId) REFERENCES Professionnel(idProfessionnel)
+        ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_auth_profile_entreprise
+        FOREIGN KEY (entrepriseId) REFERENCES Entreprise(idEntreprise)
+        ON DELETE SET NULL ON UPDATE CASCADE
+);
+
+CREATE INDEX idx_auth_profile_account_type ON AuthProfile(accountType);
+
 -- -------------------------------------------------------------
 -- 6. Image
 -- -------------------------------------------------------------
@@ -108,7 +196,7 @@ CREATE TABLE Produit (
     idProduit              INT           PRIMARY KEY AUTO_INCREMENT,
     idProfessionnel        INT           NOT NULL,
     nom                    VARCHAR(255)  NOT NULL,
-    nature                 ENUM('Légume', 'Fruit', 'Viande', 'Boulangerie', 'Poisson', 'Laitier', 'Autre') NOT NULL,
+    nature                 ENUM('Légume', 'Fruit', 'Viande', 'Boulangerie', 'Poisson', 'Laitier', 'Autre', 'Produit fermier', 'Pain', 'Viennoiserie', 'Fromage') NOT NULL,
     bio                    BOOLEAN       NOT NULL DEFAULT FALSE,
     prix                   DECIMAL(10,2) NOT NULL,
     tva                DECIMAL(5,2)  NOT NULL DEFAULT 0,
@@ -374,7 +462,65 @@ END$$
 DELIMITER ;
 
 -- -------------------------------------------------------------
--- 15. Favoris
+-- 15. Incidents / Alerting (ajout adapte depuis feature/pierrick-login)
+-- -------------------------------------------------------------
+CREATE TABLE IncidentTicket (
+    idTicket              INT PRIMARY KEY AUTO_INCREMENT,
+    idUtilisateurCreateur INT NOT NULL,
+    titre                 VARCHAR(255) NOT NULL,
+    description           TEXT NOT NULL,
+    moduleConcerne        VARCHAR(100) NOT NULL,
+    severite              ENUM('low', 'medium', 'high', 'critical') NOT NULL DEFAULT 'medium',
+    statut                ENUM('open', 'in_progress', 'resolved', 'closed') NOT NULL DEFAULT 'open',
+    dateCreation          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    dateModification      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    CONSTRAINT fk_incident_ticket_createur
+        FOREIGN KEY (idUtilisateurCreateur) REFERENCES Utilisateur(id)
+        ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+CREATE INDEX idx_incident_ticket_createur ON IncidentTicket(idUtilisateurCreateur);
+CREATE INDEX idx_incident_ticket_statut ON IncidentTicket(statut);
+CREATE INDEX idx_incident_ticket_severite ON IncidentTicket(severite);
+
+CREATE TABLE IncidentTicketReponse (
+    idReponse    INT PRIMARY KEY AUTO_INCREMENT,
+    idTicket     INT NOT NULL,
+    idSuperAdmin INT NOT NULL,
+    message      TEXT NOT NULL,
+    dateCreation DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_incident_reponse_ticket
+        FOREIGN KEY (idTicket) REFERENCES IncidentTicket(idTicket)
+        ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_incident_reponse_superadmin
+        FOREIGN KEY (idSuperAdmin) REFERENCES SuperAdmin(idAdmin)
+        ON DELETE RESTRICT ON UPDATE CASCADE
+);
+
+CREATE INDEX idx_incident_reponse_ticket ON IncidentTicketReponse(idTicket);
+CREATE INDEX idx_incident_reponse_superadmin ON IncidentTicketReponse(idSuperAdmin);
+
+CREATE TABLE IncidentTicketHistorique (
+    idHistorique        INT PRIMARY KEY AUTO_INCREMENT,
+    idTicket            INT NOT NULL,
+    ancienStatut        ENUM('open', 'in_progress', 'resolved', 'closed'),
+    nouveauStatut       ENUM('open', 'in_progress', 'resolved', 'closed') NOT NULL,
+    idUtilisateurAction INT NOT NULL,
+    commentaire         VARCHAR(500),
+    dateAction          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_incident_historique_ticket
+        FOREIGN KEY (idTicket) REFERENCES IncidentTicket(idTicket)
+        ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_incident_historique_utilisateur
+        FOREIGN KEY (idUtilisateurAction) REFERENCES Utilisateur(id)
+        ON DELETE RESTRICT ON UPDATE CASCADE
+);
+
+CREATE INDEX idx_incident_historique_ticket ON IncidentTicketHistorique(idTicket);
+CREATE INDEX idx_incident_historique_action_user ON IncidentTicketHistorique(idUtilisateurAction);
+
+-- -------------------------------------------------------------
+-- 16. Favoris
 -- -------------------------------------------------------------
 
 -- Particulier -> Produit
@@ -601,16 +747,6 @@ INSERT INTO Entreprise_LieuVente (idEntreprise, idLieu) VALUES
 (3, 3),
 (4, 4),
 (1, 5);
-
--- Professionnel_LieuVente
-INSERT INTO Professionnel_LieuVente (idProfessionnel, idLieu) VALUES
-(1, 1),
-(1, 3),
-(1, 5),
-(2, 2),
-(3, 1),
-(3, 3),
-(4, 4);
 
 -- -------------------------------------------------------------
 -- 9. PointRelais
