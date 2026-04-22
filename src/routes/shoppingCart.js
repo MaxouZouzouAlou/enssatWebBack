@@ -104,39 +104,6 @@ router.get('/:id/items', async (req, res, next) => {
 
 /**
  * @openapi
- * /shoppingCart/individual/:id:
- *   get:
- *     summary: Get shopping carts of an individual specified by ID
- *     responses:
- *       200:
- *         description: List of shopping carts from an individual
- *         content:
- *           application/json:
- *             schema:
- *               type: array
- *               items:
- *                 type: object
- *                 properties:
- *                   idPanier:
- *                     type: integer
- *                   nom:
- *                     type: string
- *                   idClient:
- *                     type: int
- */
-router.get('/individual/:id', async (req, res, next) => {
-    try {
-        const id = req.params?.id ?? req.body?.idParticulier ?? req.query?.idParticulier;
-        if (typeof id === 'undefined') return res.status(400).json({ error: 'idParticulier is required' });
-
-        const [rows] = await pool.query('SELECT * FROM Panier WHERE idParticulier = ?', [id]);
-        res.status(200).json(rows);
-    }
-    catch (err) { next(err); }
-});
-
-/**
- * @openapi
  * /shoppingCart/item:
  *   post:
  *     summary: Create a shopping cart item

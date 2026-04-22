@@ -4,9 +4,73 @@
 --  Les contraintes CHECK sur colonnes avec ON DELETE SET NULL
 --  sont remplacées par des TRIGGERS BEFORE INSERT / UPDATE.
 -- =============================================================
+
 DROP DATABASE IF EXISTS localzh;
 CREATE DATABASE IF NOT EXISTS localzh;
 USE localzh;
+
+-- -------------------------------------------------------------
+-- 0. Better Auth (ajout adapte depuis feature/pierrick-login)
+-- -------------------------------------------------------------
+CREATE TABLE `user` (
+    id              VARCHAR(255) PRIMARY KEY,
+    name            VARCHAR(255) NOT NULL,
+    email           VARCHAR(255) NOT NULL UNIQUE,
+    emailVerified   BOOLEAN NOT NULL DEFAULT FALSE,
+    role            VARCHAR(50) NOT NULL DEFAULT 'user',
+    image           TEXT,
+    accountType     VARCHAR(50) DEFAULT 'particulier',
+    firstName       VARCHAR(100),
+    lastName        VARCHAR(100),
+    createdAt       DATETIME NOT NULL,
+    updatedAt       DATETIME NOT NULL
+);
+
+CREATE TABLE `session` (
+    id          VARCHAR(255) PRIMARY KEY,
+    expiresAt   DATETIME NOT NULL,
+    token       VARCHAR(255) NOT NULL UNIQUE,
+    createdAt   DATETIME NOT NULL,
+    updatedAt   DATETIME NOT NULL,
+    ipAddress   TEXT,
+    userAgent   TEXT,
+    userId      VARCHAR(255) NOT NULL,
+    CONSTRAINT fk_session_user
+        FOREIGN KEY (userId) REFERENCES `user`(id)
+        ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+CREATE TABLE `account` (
+    id                    VARCHAR(255) PRIMARY KEY,
+    accountId             VARCHAR(255) NOT NULL,
+    providerId            VARCHAR(255) NOT NULL,
+    userId                VARCHAR(255) NOT NULL,
+    accessToken           TEXT,
+    refreshToken          TEXT,
+    idToken               TEXT,
+    accessTokenExpiresAt  DATETIME,
+    refreshTokenExpiresAt DATETIME,
+    scope                 TEXT,
+    password              TEXT,
+    createdAt             DATETIME NOT NULL,
+    updatedAt             DATETIME NOT NULL,
+    CONSTRAINT fk_account_user
+        FOREIGN KEY (userId) REFERENCES `user`(id)
+        ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+CREATE TABLE `verification` (
+    id          VARCHAR(255) PRIMARY KEY,
+    identifier  VARCHAR(255) NOT NULL,
+    value       TEXT NOT NULL,
+    expiresAt   DATETIME NOT NULL,
+    createdAt   DATETIME NOT NULL,
+    updatedAt   DATETIME NOT NULL
+);
+
+CREATE INDEX idx_session_userId ON `session`(userId);
+CREATE INDEX idx_account_userId ON `account`(userId);
+CREATE INDEX idx_verification_identifier ON `verification`(identifier);
 
 -- -------------------------------------------------------------
 -- 1. SuperAdmin
@@ -16,11 +80,10 @@ CREATE TABLE SuperAdmin (
 );
 
 -- -------------------------------------------------------------
--- 2. Utilisateur  (SuperAdmin "Est un" Utilisateur : 1-1)
+-- 2. Utilisateur
 -- -------------------------------------------------------------
 CREATE TABLE Utilisateur (
     id               INT          PRIMARY KEY AUTO_INCREMENT,
-    mdp              VARCHAR(255) NOT NULL,
     type_utilisateur VARCHAR(50)  NOT NULL,
     nom              VARCHAR(100) NOT NULL,
     prenom           VARCHAR(100) NOT NULL,
@@ -94,6 +157,31 @@ CREATE TABLE Professionnel_Entreprise (
         ON DELETE CASCADE ON UPDATE CASCADE
 );
 
+-- Mapping entre Better Auth et les profils metier de cette branche.
+CREATE TABLE AuthProfile (
+    authUserId       VARCHAR(255) PRIMARY KEY,
+    accountType      ENUM('particulier', 'professionnel', 'superadmin') NOT NULL,
+    particulierId    INT,
+    professionnelId  INT,
+    entrepriseId     INT,
+    createdAt        DATETIME NOT NULL,
+    updatedAt        DATETIME NOT NULL,
+    CONSTRAINT fk_auth_profile_user
+        FOREIGN KEY (authUserId) REFERENCES `user`(id)
+        ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_auth_profile_particulier
+        FOREIGN KEY (particulierId) REFERENCES Particulier(idParticulier)
+        ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_auth_profile_professionnel
+        FOREIGN KEY (professionnelId) REFERENCES Professionnel(idProfessionnel)
+        ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_auth_profile_entreprise
+        FOREIGN KEY (entrepriseId) REFERENCES Entreprise(idEntreprise)
+        ON DELETE SET NULL ON UPDATE CASCADE
+);
+
+CREATE INDEX idx_auth_profile_account_type ON AuthProfile(accountType);
+
 -- -------------------------------------------------------------
 -- 6. Image
 -- -------------------------------------------------------------
@@ -109,12 +197,13 @@ CREATE TABLE Produit (
     idProduit              INT           PRIMARY KEY AUTO_INCREMENT,
     idProfessionnel        INT           NOT NULL,
     nom                    VARCHAR(255)  NOT NULL,
-    nature                 VARCHAR(100),
+    nature                 ENUM('Légume', 'Fruit', 'Viande', 'Boulangerie', 'Poisson', 'Laitier', 'Autre') NOT NULL,
+    unitaireOuKilo         BOOLEAN       NOT NULL DEFAULT TRUE,
     bio                    BOOLEAN       NOT NULL DEFAULT FALSE,
     prix                   DECIMAL(10,2) NOT NULL,
     tva                    DECIMAL(5,2)  NOT NULL DEFAULT 0,
     reductionProfessionnel DECIMAL(5,2)  NOT NULL DEFAULT 0,
-    stock                  INT           NOT NULL DEFAULT 0,
+    stock                  FLOAT(8,3)    NOT NULL DEFAULT 0,
     visible                BOOLEAN       NOT NULL DEFAULT TRUE,
     CONSTRAINT fk_produit_professionnel
         FOREIGN KEY (idProfessionnel) REFERENCES Professionnel(idProfessionnel)
@@ -163,19 +252,6 @@ CREATE TABLE Entreprise_LieuVente (
         ON DELETE CASCADE ON UPDATE CASCADE
 );
 
--- Professionnel Utilise LieuVente (0..* -- 1..*)
-CREATE TABLE Professionnel_LieuVente (
-    idProfessionnel INT NOT NULL,
-    idLieu          INT NOT NULL,
-    PRIMARY KEY (idProfessionnel, idLieu),
-    CONSTRAINT fk_plv_professionnel
-        FOREIGN KEY (idProfessionnel) REFERENCES Professionnel(idProfessionnel)
-        ON DELETE CASCADE ON UPDATE CASCADE,
-    CONSTRAINT fk_plv_lieuvente
-        FOREIGN KEY (idLieu) REFERENCES LieuVente(idLieu)
-        ON DELETE CASCADE ON UPDATE CASCADE
-);
-
 -- -------------------------------------------------------------
 -- 9. PointRelais
 -- -------------------------------------------------------------
@@ -218,24 +294,6 @@ CREATE TABLE Panier_Produit (
         ON DELETE CASCADE ON UPDATE CASCADE,
     CONSTRAINT chk_pp_quantite_pos CHECK (quantite > 0)
 );
-
--- Vue : produits d'un panier avec détails produit
-CREATE OR REPLACE VIEW Vue_Panier_Produit AS
-SELECT
-    pp.idPanier,
-    pp.idProduit,
-    pp.quantite,
-    p.nom AS nomProduit,
-    p.nature,
-    p.bio,
-    p.prix,
-    p.tva,
-    p.reductionProfessionnel,
-    p.stock,
-    p.visible,
-    p.idProfessionnel
-FROM Panier_Produit pp
-JOIN Produit p ON pp.idProduit = p.idProduit;
 
 -- -------------------------------------------------------------
 -- 11. Commande
@@ -295,7 +353,7 @@ DELIMITER ;
 CREATE TABLE LigneCommande (
     idCommande INT           NOT NULL,
     idProduit  INT           NOT NULL,
-    quantite   INT           NOT NULL DEFAULT 1,
+    quantite   FLOAT(5,3)    NOT NULL DEFAULT 1,
     prixTTC    DECIMAL(10,2) NOT NULL,
     PRIMARY KEY (idCommande, idProduit),
     CONSTRAINT fk_lc_commande
@@ -406,7 +464,65 @@ END$$
 DELIMITER ;
 
 -- -------------------------------------------------------------
--- 15. Favoris
+-- 15. Incidents / Alerting (ajout adapte depuis feature/pierrick-login)
+-- -------------------------------------------------------------
+CREATE TABLE IncidentTicket (
+    idTicket              INT PRIMARY KEY AUTO_INCREMENT,
+    idUtilisateurCreateur INT NOT NULL,
+    titre                 VARCHAR(255) NOT NULL,
+    description           TEXT NOT NULL,
+    moduleConcerne        VARCHAR(100) NOT NULL,
+    severite              ENUM('low', 'medium', 'high', 'critical') NOT NULL DEFAULT 'medium',
+    statut                ENUM('open', 'in_progress', 'resolved', 'closed') NOT NULL DEFAULT 'open',
+    dateCreation          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    dateModification      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    CONSTRAINT fk_incident_ticket_createur
+        FOREIGN KEY (idUtilisateurCreateur) REFERENCES Utilisateur(id)
+        ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+CREATE INDEX idx_incident_ticket_createur ON IncidentTicket(idUtilisateurCreateur);
+CREATE INDEX idx_incident_ticket_statut ON IncidentTicket(statut);
+CREATE INDEX idx_incident_ticket_severite ON IncidentTicket(severite);
+
+CREATE TABLE IncidentTicketReponse (
+    idReponse    INT PRIMARY KEY AUTO_INCREMENT,
+    idTicket     INT NOT NULL,
+    idSuperAdmin INT NOT NULL,
+    message      TEXT NOT NULL,
+    dateCreation DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_incident_reponse_ticket
+        FOREIGN KEY (idTicket) REFERENCES IncidentTicket(idTicket)
+        ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_incident_reponse_superadmin
+        FOREIGN KEY (idSuperAdmin) REFERENCES SuperAdmin(idAdmin)
+        ON DELETE RESTRICT ON UPDATE CASCADE
+);
+
+CREATE INDEX idx_incident_reponse_ticket ON IncidentTicketReponse(idTicket);
+CREATE INDEX idx_incident_reponse_superadmin ON IncidentTicketReponse(idSuperAdmin);
+
+CREATE TABLE IncidentTicketHistorique (
+    idHistorique        INT PRIMARY KEY AUTO_INCREMENT,
+    idTicket            INT NOT NULL,
+    ancienStatut        ENUM('open', 'in_progress', 'resolved', 'closed'),
+    nouveauStatut       ENUM('open', 'in_progress', 'resolved', 'closed') NOT NULL,
+    idUtilisateurAction INT NOT NULL,
+    commentaire         VARCHAR(500),
+    dateAction          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_incident_historique_ticket
+        FOREIGN KEY (idTicket) REFERENCES IncidentTicket(idTicket)
+        ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_incident_historique_utilisateur
+        FOREIGN KEY (idUtilisateurAction) REFERENCES Utilisateur(id)
+        ON DELETE RESTRICT ON UPDATE CASCADE
+);
+
+CREATE INDEX idx_incident_historique_ticket ON IncidentTicketHistorique(idTicket);
+CREATE INDEX idx_incident_historique_action_user ON IncidentTicketHistorique(idUtilisateurAction);
+
+-- -------------------------------------------------------------
+-- 16. Favoris
 -- -------------------------------------------------------------
 
 -- Particulier -> Produit
@@ -487,6 +603,25 @@ END$$
 
 DELIMITER ;
 
+-- Vue : produits d'un panier avec détails produit
+CREATE OR REPLACE VIEW Vue_Panier_Produit AS
+SELECT
+    pp.idPanier,
+    pp.idProduit,
+    pp.quantite,
+    p.nom AS nomProduit,
+    p.nature,
+    p.unitaireOuKilo,
+    p.bio,
+    p.prix,
+    p.tva,
+    p.reductionProfessionnel,
+    p.stock,
+    p.visible,
+    p.idProfessionnel
+FROM Panier_Produit pp
+JOIN Produit p ON pp.idProduit = p.idProduit;
+
 -- =============================================================
 --  FIN DU SCRIPT DE CRÉATION
 -- =============================================================
@@ -506,17 +641,17 @@ INSERT INTO SuperAdmin (idAdmin) VALUES
 -- -------------------------------------------------------------
 -- 2. Utilisateur
 -- -------------------------------------------------------------
-INSERT INTO Utilisateur (id, mdp, type_utilisateur, nom, prenom, email, num_telephone, adresse_ligne, code_postal, ville, idAdmin) VALUES
-(1,  '$2b$12$hashed_password_1', 'superadmin',    'Dupont',    'Alice',     'alice.dupont@localzh.fr',       '0600000001', '1 Rue de l\'Admin',      '35000', 'Rennes',     1),
-(2,  '$2b$12$hashed_password_2', 'superadmin',    'Martin',    'Bernard',   'bernard.martin@localzh.fr',    '0600000002', '2 Rue de l\'Admin',      '35000', 'Rennes',     2),
-(3,  '$2b$12$hashed_password_3', 'professionnel', 'Leroy',     'Claire',    'claire.leroy@ferme-leroy.fr',  '0611223344', '12 Rue des Champs',      '35000', 'Rennes',     NULL),
-(4,  '$2b$12$hashed_password_4', 'professionnel', 'Moreau',    'David',     'david.moreau@boulangerie-moreau.fr', '0622334455', '5 Place du Marché', '35200', 'Rennes', NULL),
-(5,  '$2b$12$hashed_password_5', 'professionnel', 'Simon',     'Emma',      'emma.simon@maraichere-simon.fr','0633445566', '8 Allée des Jardins',    '35700', 'Rennes',     NULL),
-(6,  '$2b$12$hashed_password_6', 'particulier',   'Laurent',   'François',  'francois.laurent@email.fr',    '0655667788', '14 Rue du Bois',         '35000', 'Rennes',     NULL),
-(7,  '$2b$12$hashed_password_7', 'particulier',   'Thomas',    'Gabrielle', 'gabrielle.thomas@email.fr',    '0666778899', '22 Avenue de la Paix',   '35200', 'Rennes',     NULL),
-(8,  '$2b$12$hashed_password_8', 'particulier',   'Richard',   'Hugo',      'hugo.richard@email.fr',        '0677889900', '7 Boulevard du Port',   '35400', 'Saint-Malo', NULL),
-(9,  '$2b$12$hashed_password_9', 'particulier',   'Petit',     'Isabelle',  'isabelle.petit@email.fr',      '0688990011', '33 Chemin des Lilas',   '35700', 'Rennes',     NULL),
-(10, '$2b$12$hashed_password_0', 'professionnel', 'Girard',    'Julien',    'julien.girard@fromagerie-girard.fr', '0644556677', '3 Impasse du Moulin', '35800', 'Dinard', NULL);
+INSERT INTO Utilisateur (id, type_utilisateur, nom, prenom, email, num_telephone, adresse_ligne, code_postal, ville, idAdmin) VALUES
+(1,  'superadmin',    'Dupont',    'Alice',     'alice.dupont@localzh.fr',       '0600000001', '1 Rue de l\'Admin',      '35000', 'Rennes',     1),
+(2,  'superadmin',    'Martin',    'Bernard',   'bernard.martin@localzh.fr',    '0600000002', '2 Rue de l\'Admin',      '35000', 'Rennes',     2),
+(3,  'professionnel', 'Leroy',     'Claire',    'claire.leroy@ferme-leroy.fr',  '0611223344', '12 Rue des Champs',      '35000', 'Rennes',     NULL),
+(4,  'professionnel', 'Moreau',    'David',     'david.moreau@boulangerie-moreau.fr', '0622334455', '5 Place du Marché', '35200', 'Rennes', NULL),
+(5,  'professionnel', 'Simon',     'Emma',      'emma.simon@maraichere-simon.fr','0633445566', '8 Allée des Jardins',    '35700', 'Rennes',     NULL),
+(6,  'particulier',   'Laurent',   'François',  'francois.laurent@email.fr',    '0655667788', '14 Rue du Bois',         '35000', 'Rennes',     NULL),
+(7,  'particulier',   'Thomas',    'Gabrielle', 'gabrielle.thomas@email.fr',    '0666778899', '22 Avenue de la Paix',   '35200', 'Rennes',     NULL),
+(8,  'particulier',   'Richard',   'Hugo',      'hugo.richard@email.fr',        '0677889900', '7 Boulevard du Port',   '35400', 'Saint-Malo', NULL),
+(9,  'particulier',   'Petit',     'Isabelle',  'isabelle.petit@email.fr',      '0688990011', '33 Chemin des Lilas',   '35700', 'Rennes',     NULL),
+(10, 'professionnel', 'Girard',    'Julien',    'julien.girard@fromagerie-girard.fr', '0644556677', '3 Impasse du Moulin', '35800', 'Dinard', NULL);
 
 -- -------------------------------------------------------------
 -- 3. Professionnel
@@ -582,22 +717,22 @@ INSERT INTO Image (idImage, path) VALUES
 -- -------------------------------------------------------------
 -- 7. Produit
 -- -------------------------------------------------------------
-INSERT INTO Produit (idProduit, idProfessionnel, nom, nature, bio, prix, tva, reductionProfessionnel, stock, visible) VALUES
-(1,  1, 'Tomates cerises',     'Légume',  TRUE,  3.50,  5.50, 5.00,  100, TRUE),
-(2,  1, 'Courgettes',          'Légume',  TRUE,  2.00,  5.50, 0.00,  80,  TRUE),
-(3,  1, 'Pommes Golden',       'Fruit',   FALSE, 2.50,  5.50, 3.00,  150, TRUE),
-(4,  1, 'Œufs fermiers (x6)', 'Produit fermier', FALSE, 2.80, 5.50, 0.00, 200, TRUE),
-(5,  1, 'Miel de fleurs',      'Produit fermier', TRUE,  6.00, 5.50, 5.00, 60,  TRUE),
-(6,  2, 'Baguette tradition',  'Pain',    FALSE, 1.20,  5.50, 0.00,  50,  TRUE),
-(7,  2, 'Pain complet',        'Pain',    FALSE, 2.50,  5.50, 0.00,  30,  TRUE),
-(8,  2, 'Brioche',             'Viennoiserie', FALSE, 3.80, 5.50, 0.00, 20, TRUE),
-(9,  3, 'Carottes (1 kg)',     'Légume',  TRUE,  1.80,  5.50, 0.00,  200, TRUE),
-(10, 3, 'Salade verte',        'Légume',  TRUE,  1.50,  5.50, 0.00,  80,  TRUE),
-(11, 4, 'Chèvre frais',        'Fromage', FALSE, 4.50, 20.00, 8.00,  40,  TRUE),
-(12, 4, 'Camembert artisanal', 'Fromage', FALSE, 5.00, 20.00, 5.00,  35,  TRUE),
-(13, 4, 'Comté 12 mois',       'Fromage', FALSE, 7.50, 20.00, 10.00, 25,  TRUE),
-(14, 1, 'Courges butternut',   'Légume',  TRUE,  3.20,  5.50, 0.00,  60,  TRUE),
-(15, 2, 'Croissant',           'Viennoiserie', FALSE, 1.30, 5.50, 0.00, 40, FALSE);
+INSERT INTO Produit (idProduit, idProfessionnel, nom, nature, unitaireOuKilo, bio, prix, tva, reductionProfessionnel, stock, visible) VALUES
+(1,  1, 'Tomates cerises',     'Légume',      TRUE,  TRUE,  3.50,  5.50, 5.00,  120, TRUE),
+(2,  1, 'Courgettes',          'Légume',      FALSE, TRUE,  2.00,  5.50, 0.00,  80,  TRUE),
+(3,  1, 'Pommes Golden',       'Fruit',       FALSE, FALSE, 2.50,  5.50, 3.00,  99, TRUE),
+(4,  1, 'Œufs fermiers (x6)',  'Viande',      TRUE,  FALSE, 2.80,  5.50, 0.00, 99, TRUE),
+(5,  1, 'Miel de fleurs',      'Autre',       TRUE,  TRUE,  6.00,  5.50, 5.00, 60,  TRUE),
+(6,  2, 'Baguette tradition',  'Boulangerie', TRUE,  FALSE, 1.20,  5.50, 0.00,  50,  TRUE),
+(7,  2, 'Pain complet',        'Boulangerie', TRUE,  FALSE, 2.50,  5.50, 0.00,  30,  TRUE),
+(8,  2, 'Brioche',             'Boulangerie', TRUE,  FALSE, 3.80,  5.50, 0.00, 20, TRUE),
+(9,  3, 'Carottes (1 kg)',     'Légume',      FALSE, TRUE,  1.80,  5.50, 0.00,  99, TRUE),
+(10, 3, 'Salade verte',        'Légume',      TRUE,  TRUE,  1.50,  5.50, 0.00,  80,  TRUE),
+(11, 4, 'Chèvre frais',        'Laitier',     TRUE,  FALSE, 4.50, 20.00, 8.00,  40,  TRUE),
+(12, 4, 'Camembert artisanal', 'Laitier',     TRUE,  FALSE, 5.00, 20.00, 5.00,  35,  TRUE),
+(13, 4, 'Comté 12 mois',       'Laitier',     TRUE,  FALSE, 7.50, 20.00, 10.00, 25,  TRUE),
+(14, 1, 'Courges butternut',   'Légume',      FALSE, TRUE,  3.20,  5.50, 0.00,  60,  TRUE),
+(15, 2, 'Croissant',           'Boulangerie', TRUE,  FALSE, 1.30,  5.50, 0.00, 40, FALSE);
 
 -- Produit_Image
 INSERT INTO Produit_Image (idProduit, idImage) VALUES
@@ -633,16 +768,6 @@ INSERT INTO Entreprise_LieuVente (idEntreprise, idLieu) VALUES
 (3, 3),
 (4, 4),
 (1, 5);
-
--- Professionnel_LieuVente
-INSERT INTO Professionnel_LieuVente (idProfessionnel, idLieu) VALUES
-(1, 1),
-(1, 3),
-(1, 5),
-(2, 2),
-(3, 1),
-(3, 3),
-(4, 4);
 
 -- -------------------------------------------------------------
 -- 9. PointRelais
