@@ -162,19 +162,6 @@ CREATE TABLE Entreprise_LieuVente (
         ON DELETE CASCADE ON UPDATE CASCADE
 );
 
--- Professionnel Utilise LieuVente (0..* -- 1..*)
-CREATE TABLE Professionnel_LieuVente (
-    idProfessionnel INT NOT NULL,
-    idLieu          INT NOT NULL,
-    PRIMARY KEY (idProfessionnel, idLieu),
-    CONSTRAINT fk_plv_professionnel
-        FOREIGN KEY (idProfessionnel) REFERENCES Professionnel(idProfessionnel)
-        ON DELETE CASCADE ON UPDATE CASCADE,
-    CONSTRAINT fk_plv_lieuvente
-        FOREIGN KEY (idLieu) REFERENCES LieuVente(idLieu)
-        ON DELETE CASCADE ON UPDATE CASCADE
-);
-
 -- -------------------------------------------------------------
 -- 9. PointRelais
 -- -------------------------------------------------------------
