@@ -282,9 +282,9 @@ CREATE TABLE Panier (
 
 -- Produits dans un Panier
 CREATE TABLE Panier_Produit (
-    idPanier  INT NOT NULL,
-    idProduit INT NOT NULL,
-    quantite  INT NOT NULL DEFAULT 1,
+    idPanier  INT           NOT NULL,
+    idProduit INT           NOT NULL,
+    quantite  DECIMAL(10,3) NOT NULL DEFAULT 1,
     PRIMARY KEY (idPanier, idProduit),
     CONSTRAINT fk_pp_panier
         FOREIGN KEY (idPanier) REFERENCES Panier(idPanier)
