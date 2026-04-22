@@ -603,6 +603,77 @@ END$$
 
 DELIMITER ;
 
+-- -------------------------------------------------------------
+-- 17. Notation & avis (acheteurs -> produits / producteurs)
+-- -------------------------------------------------------------
+CREATE TABLE AvisProduit (
+    idAvisProduit     INT PRIMARY KEY AUTO_INCREMENT,
+    idParticulier     INT NOT NULL,
+    idProduit         INT NOT NULL,
+    note              TINYINT NOT NULL,
+    commentaire       VARCHAR(1000),
+    dateCreation      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    dateModification  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    CONSTRAINT chk_avis_produit_note
+        CHECK (note >= 1 AND note <= 5),
+    CONSTRAINT uq_avis_produit_auteur_cible
+        UNIQUE (idParticulier, idProduit),
+    CONSTRAINT fk_avis_produit_particulier
+        FOREIGN KEY (idParticulier) REFERENCES Particulier(idParticulier)
+        ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_avis_produit_produit
+        FOREIGN KEY (idProduit) REFERENCES Produit(idProduit)
+        ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+CREATE INDEX idx_avis_produit_produit ON AvisProduit(idProduit);
+CREATE INDEX idx_avis_produit_note ON AvisProduit(note);
+
+CREATE TABLE AvisProfessionnel (
+    idAvisProfessionnel INT PRIMARY KEY AUTO_INCREMENT,
+    idParticulier       INT NOT NULL,
+    idProfessionnel     INT NOT NULL,
+    note                TINYINT NOT NULL,
+    commentaire         VARCHAR(1000),
+    dateCreation        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    dateModification    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    CONSTRAINT chk_avis_professionnel_note
+        CHECK (note >= 1 AND note <= 5),
+    CONSTRAINT uq_avis_professionnel_auteur_cible
+        UNIQUE (idParticulier, idProfessionnel),
+    CONSTRAINT fk_avis_professionnel_particulier
+        FOREIGN KEY (idParticulier) REFERENCES Particulier(idParticulier)
+        ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_avis_professionnel_professionnel
+        FOREIGN KEY (idProfessionnel) REFERENCES Professionnel(idProfessionnel)
+        ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+CREATE INDEX idx_avis_professionnel_professionnel ON AvisProfessionnel(idProfessionnel);
+CREATE INDEX idx_avis_professionnel_note ON AvisProfessionnel(note);
+
+CREATE OR REPLACE VIEW Vue_Note_Moyenne_Produit AS
+SELECT
+    p.idProduit,
+    p.nom,
+    COUNT(ap.idAvisProduit) AS nombreAvis,
+    ROUND(COALESCE(AVG(ap.note), 0), 2) AS noteMoyenne
+FROM Produit p
+LEFT JOIN AvisProduit ap ON ap.idProduit = p.idProduit
+GROUP BY p.idProduit, p.nom;
+
+CREATE OR REPLACE VIEW Vue_Note_Moyenne_Professionnel AS
+SELECT
+    pr.idProfessionnel,
+    u.nom,
+    u.prenom,
+    COUNT(apr.idAvisProfessionnel) AS nombreAvis,
+    ROUND(COALESCE(AVG(apr.note), 0), 2) AS noteMoyenne
+FROM Professionnel pr
+JOIN Utilisateur u ON u.id = pr.id
+LEFT JOIN AvisProfessionnel apr ON apr.idProfessionnel = pr.idProfessionnel
+GROUP BY pr.idProfessionnel, u.nom, u.prenom;
+
 -- Vue : produits d'un panier avec détails produit
 CREATE OR REPLACE VIEW Vue_Panier_Produit AS
 SELECT
@@ -911,6 +982,25 @@ INSERT INTO Favoris_Professionnel_Professionnel (idProfessionnelSource, idProfes
 (3, 1),
 (3, 4),
 (4, 2);
+
+-- -------------------------------------------------------------
+-- 16. Avis produits / producteurs
+-- -------------------------------------------------------------
+INSERT INTO AvisProduit (idParticulier, idProduit, note, commentaire) VALUES
+(1, 1, 5, 'Produits frais et tres bons.'),
+(1, 11, 4, 'Bon fromage, un peu cher.'),
+(2, 6, 5, 'Baguette excellente.'),
+(2, 7, 4, 'Pain complet de qualite.'),
+(3, 12, 5, 'Camembert artisanal au top.'),
+(4, 9, 4, 'Carottes tres correctes.');
+
+INSERT INTO AvisProfessionnel (idParticulier, idProfessionnel, note, commentaire) VALUES
+(1, 1, 5, 'Tres reactif et produits conformes.'),
+(1, 4, 4, 'Bonne qualite globale.'),
+(2, 2, 5, 'Excellent service client.'),
+(3, 4, 5, 'Tres satisfait de mes commandes.'),
+(4, 1, 4, 'Professionnel serieux.'),
+(4, 3, 4, 'Bons produits, livraison rapide.');
 
 -- =============================================================
 --  FIN DU PEUPLEMENT
