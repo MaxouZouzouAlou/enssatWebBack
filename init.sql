@@ -200,9 +200,9 @@ CREATE TABLE Produit (
     nature                 ENUM('Légume', 'Fruit', 'Viande', 'Boulangerie', 'Poisson', 'Laitier', 'Autre') NOT NULL,
     bio                    BOOLEAN       NOT NULL DEFAULT FALSE,
     prix                   DECIMAL(10,2) NOT NULL,
-    tva                DECIMAL(5,2)  NOT NULL DEFAULT 0,
+    tva                    DECIMAL(5,2)  NOT NULL DEFAULT 0,
     reductionProfessionnel DECIMAL(5,2)  NOT NULL DEFAULT 0,
-    stock                  FLOAT(5,3)           NOT NULL DEFAULT 0,
+    stock                  FLOAT(8,3)    NOT NULL DEFAULT 0,
     visible                BOOLEAN       NOT NULL DEFAULT TRUE,
     CONSTRAINT fk_produit_professionnel
         FOREIGN KEY (idProfessionnel) REFERENCES Professionnel(idProfessionnel)
@@ -716,15 +716,15 @@ INSERT INTO Image (idImage, path) VALUES
 -- 7. Produit
 -- -------------------------------------------------------------
 INSERT INTO Produit (idProduit, idProfessionnel, nom, nature, bio, prix, tva, reductionProfessionnel, stock, visible) VALUES
-(1,  1, 'Tomates cerises',     'Légume',  TRUE,  3.50,  5.50, 5.00,  100, TRUE),
+(1,  1, 'Tomates cerises',     'Légume',  TRUE,  3.50,  5.50, 5.00,  99, TRUE),
 (2,  1, 'Courgettes',          'Légume',  TRUE,  2.00,  5.50, 0.00,  80,  TRUE),
-(3,  1, 'Pommes Golden',       'Fruit',   FALSE, 2.50,  5.50, 3.00,  150, TRUE),
-(4,  1, 'Œufs fermiers (x6)',  'Viande', FALSE, 2.80, 5.50, 0.00, 200, TRUE),
+(3,  1, 'Pommes Golden',       'Fruit',   FALSE, 2.50,  5.50, 3.00,  99, TRUE),
+(4,  1, 'Œufs fermiers (x6)',  'Viande', FALSE, 2.80, 5.50, 0.00, 99, TRUE),
 (5,  1, 'Miel de fleurs',      'Autre', TRUE,  6.00, 5.50, 5.00, 60,  TRUE),
 (6,  2, 'Baguette tradition',  'Boulangerie',    FALSE, 1.20,  5.50, 0.00,  50,  TRUE),
 (7,  2, 'Pain complet',        'Boulangerie',    FALSE, 2.50,  5.50, 0.00,  30,  TRUE),
 (8,  2, 'Brioche',             'Boulangerie', FALSE, 3.80, 5.50, 0.00, 20, TRUE),
-(9,  3, 'Carottes (1 kg)',     'Légume',  TRUE,  1.80,  5.50, 0.00,  200, TRUE),
+(9,  3, 'Carottes (1 kg)',     'Légume',  TRUE,  1.80,  5.50, 0.00,  99, TRUE),
 (10, 3, 'Salade verte',        'Légume',  TRUE,  1.50,  5.50, 0.00,  80,  TRUE),
 (11, 4, 'Chèvre frais',        'Laitier', FALSE, 4.50, 20.00, 8.00,  40,  TRUE),
 (12, 4, 'Camembert artisanal', 'Laitier', FALSE, 5.00, 20.00, 5.00,  35,  TRUE),
