@@ -7,6 +7,7 @@ import cors from 'cors';
 
 import authProfileRouter from './routes/auth-profile.js';
 import incidentsRouter from './routes/incidents.js';
+import mapRouter from './routes/map.js';
 import professionnelsRouter from './routes/professionnels.js';
 import usersRouter from './routes/users.js';
 import productsRouter from './routes/products.js';
@@ -48,6 +49,7 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 app.use('/users', usersRouter);
 app.use('/professionnels', professionnelsRouter);
 app.use('/incidents', incidentsRouter);
+app.use('/map', mapRouter);
 app.use('/products', productsRouter);
 app.use('/shoppingCart', shoppingCartRouter);
 
