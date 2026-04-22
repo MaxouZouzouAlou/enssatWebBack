@@ -1,14 +1,18 @@
 import express from 'express';
 import dotenv from 'dotenv';
-import swaggerJsdoc from 'swagger-jsdoc';
-import swaggerUi from 'swagger-ui-express';
 import { toNodeHandler } from 'better-auth/node';
 import { auth } from './auth.js';
 import { seedSuperAdmin } from './seed/superadmin.js';
+
 import authProfileRouter from './routes/auth-profile.js';
 import incidentsRouter from './routes/incidents.js';
 import professionnelsRouter from './routes/professionnels.js';
 import usersRouter from './routes/users.js';
+const productsRouter = require('./routes/products');
+const shoppingCartRouter = require('./routes/shoppingCart');
+
+const swaggerJsdoc = require('swagger-jsdoc');
+const swaggerUi = require('swagger-ui-express');
 
 dotenv.config();
 
@@ -42,6 +46,8 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 app.use('/users', usersRouter);
 app.use('/professionnels', professionnelsRouter);
 app.use('/incidents', incidentsRouter);
+app.use('/products', productsRouter);
+app.use('/shoppingCart', shoppingCartRouter);
 
 app.use((err, req, res, next) => {
 	console.error(err);
