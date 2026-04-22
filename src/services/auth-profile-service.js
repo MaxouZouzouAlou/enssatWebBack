@@ -1,0 +1,339 @@
+import pool from '../server_config/db.js';
+
+const ACCOUNT_TYPES = new Set(['particulier', 'professionnel']);
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const NAME_REGEX = /^[A-Za-zÀ-ÖØ-öø-ÿ' -]{2,100}$/;
+const POSTAL_CODE_REGEX = /^\d{5}$/;
+
+export class ValidationError extends Error {
+	constructor(message, details = {}) {
+		super(message);
+		this.name = 'ValidationError';
+		this.status = 400;
+		this.details = details;
+	}
+}
+
+export class ConflictError extends Error {
+	constructor(message) {
+		super(message);
+		this.name = 'ConflictError';
+		this.status = 409;
+	}
+}
+
+const trim = (value) => String(value || '').trim();
+
+export function normalizeEmail(email) {
+	return trim(email).toLowerCase();
+}
+
+export function normalizeAccountType(accountType) {
+	const normalized = trim(accountType || 'particulier').toLowerCase();
+	if (!ACCOUNT_TYPES.has(normalized)) {
+		throw new ValidationError('Type de compte invalide.');
+	}
+	return normalized;
+}
+
+export function validateSiret(siret) {
+	const normalized = trim(siret);
+	if (!/^\d{14}$/.test(normalized)) {
+		throw new ValidationError('Le SIRET doit contenir exactement 14 chiffres.');
+	}
+	return normalized;
+}
+
+function validateName(value, label) {
+	if (!NAME_REGEX.test(value)) {
+		throw new ValidationError(`${label} invalide.`);
+	}
+}
+
+function validatePostalCode(codePostal) {
+	if (!POSTAL_CODE_REGEX.test(codePostal)) {
+		throw new ValidationError('Code postal invalide.');
+	}
+}
+
+export function validateRegistrationPayload(payload) {
+	const accountType = normalizeAccountType(payload.accountType);
+	const email = normalizeEmail(payload.email);
+	const nom = trim(payload.nom);
+	const prenom = trim(payload.prenom);
+	const password = String(payload.password || '');
+
+	if (!email || !EMAIL_REGEX.test(email)) {
+		throw new ValidationError('Adresse email invalide.');
+	}
+	validateName(nom, 'Nom');
+	validateName(prenom, 'Prenom');
+	if (password.length < 8) {
+		throw new ValidationError('Le mot de passe doit contenir au moins 8 caracteres.');
+	}
+
+	const normalized = {
+		accountType,
+		email,
+		nom,
+		prenom,
+		password
+	};
+
+	if (accountType === 'professionnel') {
+		const entreprise = payload.entreprise || {};
+		const nomEntreprise = trim(entreprise.nom);
+		const siret = validateSiret(entreprise.siret);
+		const adresseLigne = trim(entreprise.adresse_ligne);
+		const codePostal = trim(entreprise.code_postal);
+		const ville = trim(entreprise.ville);
+		if (!nomEntreprise) {
+			throw new ValidationError("Le nom de l'entreprise est requis.");
+		}
+		if (!adresseLigne || !codePostal || !ville) {
+			throw new ValidationError("L'adresse de l'entreprise est requise.");
+		}
+		validatePostalCode(codePostal);
+		normalized.entreprise = {
+			nom: nomEntreprise,
+			siret,
+			adresse_ligne: adresseLigne,
+			code_postal: codePostal,
+			ville
+		};
+	}
+
+	return normalized;
+}
+
+export async function assertRegistrationAvailable({ email, accountType, siret }) {
+	const [authRows] = await pool.execute('SELECT id FROM `user` WHERE email = ? LIMIT 1', [email]);
+	if (authRows.length) {
+		throw new ConflictError('Un compte existe deja avec cette adresse email.');
+	}
+
+	const [userRows] = await pool.execute('SELECT id FROM Utilisateur WHERE email = ? LIMIT 1', [email]);
+	if (userRows.length) {
+		throw new ConflictError('Cette adresse email est deja utilisee.');
+	}
+
+	if (accountType === 'professionnel') {
+		const [siretRows] = await pool.execute(
+			'SELECT idProfessionnel FROM Professionnel_SIRET WHERE numero_siret = ? LIMIT 1',
+			[siret]
+		);
+		if (siretRows.length) {
+			throw new ConflictError('Ce SIRET est deja rattache a un compte professionnel.');
+		}
+	}
+}
+
+export async function ensureBusinessProfile(authUser, options = {}) {
+	const accountType = normalizeAccountType(options.accountType || authUser.accountType || 'particulier');
+	const email = normalizeEmail(authUser.email);
+	const nom = trim(options.nom || authUser.lastName || getLastName(authUser.name));
+	const prenom = trim(options.prenom || authUser.firstName || getFirstName(authUser.name));
+	const entreprise = options.entreprise || {};
+
+	const conn = await pool.getConnection();
+	try {
+		await conn.beginTransaction();
+
+		const [existingRows] = await conn.execute(
+			`SELECT authUserId, accountType, clientId, professionnelId, entrepriseId
+			 FROM AuthProfile
+			 WHERE authUserId = ?
+			 FOR UPDATE`,
+			[authUser.id]
+		);
+
+		if (existingRows.length) {
+			await conn.commit();
+			return getBusinessProfileByAuthUserId(authUser.id);
+		}
+
+		if (accountType === 'professionnel') {
+			await createProfessionalProfile(conn, {
+				authUserId: authUser.id,
+				email,
+				entreprise,
+				nom,
+				prenom
+			});
+		} else {
+			await createClientProfile(conn, {
+				authUserId: authUser.id,
+				email,
+				nom,
+				prenom
+			});
+		}
+
+		await conn.commit();
+		return getBusinessProfileByAuthUserId(authUser.id);
+	} catch (error) {
+		await conn.rollback();
+		throw error;
+	} finally {
+		conn.release();
+	}
+}
+
+async function createClientProfile(conn, { authUserId, email, nom, prenom }) {
+	const [userResult] = await conn.execute(
+		`INSERT INTO Utilisateur
+		 (type_utilisateur, nom, prenom, email, num_telephone, adresse_ligne, code_postal, ville, idAdmin)
+		 VALUES (?, ?, ?, ?, NULL, NULL, NULL, NULL, NULL)`,
+		['particulier', nom, prenom, email]
+	);
+	const clientId = userResult.insertId;
+	await conn.execute('INSERT INTO Client (idUser) VALUES (?)', [clientId]);
+	await conn.execute(
+		`INSERT INTO AuthProfile
+		 (authUserId, accountType, clientId, professionnelId, entrepriseId, createdAt, updatedAt)
+		 VALUES (?, 'particulier', ?, NULL, NULL, NOW(), NOW())`,
+		[authUserId, clientId]
+	);
+}
+
+async function createProfessionalProfile(conn, { authUserId, email, entreprise, nom, prenom }) {
+	const companyName = trim(entreprise.nom);
+	const siret = validateSiret(entreprise.siret);
+	if (!companyName) {
+		throw new ValidationError("Le nom de l'entreprise est requis.");
+	}
+
+	const [userResult] = await conn.execute(
+		`INSERT INTO Utilisateur
+		 (type_utilisateur, nom, prenom, email, num_telephone, adresse_ligne, code_postal, ville, idAdmin)
+		 VALUES (?, ?, ?, ?, NULL, NULL, NULL, NULL, NULL)`,
+		['professionnel', nom, prenom, email]
+	);
+	const professionnelId = userResult.insertId;
+
+	await conn.execute('INSERT INTO Professionnel (idProfessionnel) VALUES (?)', [professionnelId]);
+
+	const [existingCompanyRows] = await conn.execute('SELECT idEntreprise FROM Entreprise WHERE siret = ? LIMIT 1', [siret]);
+	let entrepriseId = existingCompanyRows[0]?.idEntreprise;
+	if (!entrepriseId) {
+		const [companyResult] = await conn.execute(
+			'INSERT INTO Entreprise (nom, siret, adresse_ligne, code_postal, ville) VALUES (?, ?, ?, ?, ?)',
+			[companyName, siret, entreprise.adresse_ligne, entreprise.code_postal, entreprise.ville]
+		);
+		entrepriseId = companyResult.insertId;
+	}
+
+	await conn.execute('INSERT INTO Professionnel_SIRET (idProfessionnel, numero_siret) VALUES (?, ?)', [
+		professionnelId,
+		siret
+	]);
+	await conn.execute(
+		`INSERT INTO AuthProfile
+		 (authUserId, accountType, clientId, professionnelId, entrepriseId, createdAt, updatedAt)
+		 VALUES (?, 'professionnel', NULL, ?, ?, NOW(), NOW())`,
+		[authUserId, professionnelId, entrepriseId]
+	);
+}
+
+export async function getBusinessProfileByAuthUserId(authUserId) {
+	const [rows] = await pool.execute(
+		`SELECT
+			ap.authUserId,
+			ap.accountType,
+			ap.clientId,
+			ap.professionnelId,
+			ap.entrepriseId,
+			u.email AS authEmail,
+			u.name AS authName,
+			u.image AS authImage,
+			u.emailVerified,
+			u.firstName AS authFirstName,
+			u.lastName AS authLastName,
+			utilisateur.email AS clientEmail,
+			utilisateur.nom AS clientNom,
+			utilisateur.prenom AS clientPrenom,
+			utilisateur.num_telephone AS clientTelephone,
+			utilisateur.adresse_ligne AS clientAdresseLigne,
+			utilisateur.code_postal AS clientCodePostal,
+			utilisateur.ville AS clientVille,
+			proUtilisateur.email AS professionnelEmail,
+			proUtilisateur.nom AS professionnelNom,
+			proUtilisateur.prenom AS professionnelPrenom,
+			proUtilisateur.num_telephone AS professionnelTelephone,
+			proUtilisateur.adresse_ligne AS professionnelAdresseLigne,
+			proUtilisateur.code_postal AS professionnelCodePostal,
+			proUtilisateur.ville AS professionnelVille,
+			entreprise.nom AS entrepriseNom,
+			entreprise.siret AS entrepriseSiret,
+			entreprise.adresse_ligne AS entrepriseAdresseLigne,
+			entreprise.code_postal AS entrepriseCodePostal,
+			entreprise.ville AS entrepriseVille
+		 FROM AuthProfile ap
+		 INNER JOIN \`user\` u ON u.id = ap.authUserId
+		 LEFT JOIN Client client ON client.idUser = ap.clientId
+		 LEFT JOIN Utilisateur utilisateur ON utilisateur.id = client.idUser
+		 LEFT JOIN Professionnel pro ON pro.idProfessionnel = ap.professionnelId
+		 LEFT JOIN Utilisateur proUtilisateur ON proUtilisateur.id = pro.idProfessionnel
+		 LEFT JOIN Entreprise entreprise ON entreprise.idEntreprise = ap.entrepriseId
+		 WHERE ap.authUserId = ?
+		 LIMIT 1`,
+		[authUserId]
+	);
+
+	if (!rows.length) return null;
+	const row = rows[0];
+	return {
+		authUserId: row.authUserId,
+		accountType: row.accountType,
+		user: {
+			email: row.authEmail,
+			name: row.authName,
+			image: row.authImage,
+			emailVerified: Boolean(row.emailVerified),
+			nom: row.clientNom || row.professionnelNom || row.authLastName || null,
+			prenom: row.clientPrenom || row.professionnelPrenom || row.authFirstName || null
+		},
+		client: row.clientId
+			? {
+				id: row.clientId,
+				email: row.clientEmail,
+				num_telephone: row.clientTelephone,
+				adresse_ligne: row.clientAdresseLigne,
+				code_postal: row.clientCodePostal,
+				ville: row.clientVille
+			}
+			: null,
+		professionnel: row.professionnelId
+			? {
+				id: row.professionnelId,
+				email: row.professionnelEmail,
+				nom: row.professionnelNom,
+				prenom: row.professionnelPrenom,
+				num_telephone: row.professionnelTelephone,
+				adresse_ligne: row.professionnelAdresseLigne,
+				code_postal: row.professionnelCodePostal,
+				ville: row.professionnelVille,
+				entreprise: {
+					id: row.entrepriseId,
+					nom: row.entrepriseNom,
+					siret: row.entrepriseSiret,
+					adresse_ligne: row.entrepriseAdresseLigne,
+					code_postal: row.entrepriseCodePostal,
+					ville: row.entrepriseVille
+				}
+			}
+			: null
+	};
+}
+
+function getFirstName(name) {
+	const parts = trim(name).split(/\s+/).filter(Boolean);
+	if (!parts.length) return '';
+	return parts.slice(0, -1).join(' ') || parts[0];
+}
+
+function getLastName(name) {
+	const parts = trim(name).split(/\s+/).filter(Boolean);
+	if (parts.length <= 1) return '';
+	return parts[parts.length - 1];
+}
