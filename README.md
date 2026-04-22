@@ -5,25 +5,109 @@ Prerequisites
 - Install MySQL server locally (no Docker)
 
 Setup
-1. Copy `.env.example` to `.env` and edit DB credentials if needed.
-2. Initialize the database:
+1. Install MySQL if needed.
 
 ```bash
-# from project root (adjust user/host if necessary)
-mysql -u root -p < init.sql
+sudo apt update
+sudo apt install mysql-server -y
 ```
 
-If the `localzh` database already exists, apply the migrations in order:
+2. Check that the MySQL service is running.
 
 ```bash
-mysql -u root -p localzh < migrations/001_auth.sql
-mysql -u root -p localzh < migrations/002_user_company_email_verification.sql
-mysql -u root -p localzh < migrations/003_drop_utilisateur_mdp.sql
-mysql -u root -p localzh < migrations/004_professionnel_producteur_use_utilisateur.sql
-mysql -u root -p localzh < migrations/005_products_use_professionnel.sql
+sudo systemctl status mysql --no-pager
 ```
 
-3. Configure auth environment variables:
+3. Make sure the MySQL `root` account can authenticate with a password.
+
+On some local installs, `root` uses socket authentication and `mysql -u root
+-p...` will fail even if MySQL is running. In that case, configure the local
+`root` password once:
+
+```bash
+sudo mysql
+```
+
+Inside the MySQL prompt, first check the current plugin:
+
+```sql
+SELECT user, host, plugin FROM mysql.user WHERE user = 'root';
+```
+
+Then set the root password and enable password authentication:
+
+```sql
+ALTER USER 'root'@'localhost'
+IDENTIFIED WITH caching_sha2_password BY 'sqlpassword';
+```
+
+If your MySQL version rejects `caching_sha2_password`, use the default
+authentication plugin:
+
+```sql
+ALTER USER 'root'@'localhost' IDENTIFIED BY 'sqlpassword';
+```
+
+Then quit MySQL:
+
+```sql
+exit
+```
+
+4. Check the MySQL `root` password before importing the schema.
+
+The expected local password is `sqlpassword`. Verify it with:
+
+```bash
+# from project root
+mysql -u root -psqlpassword -e "SELECT VERSION();"
+```
+
+You can also test interactively:
+
+```bash
+mysql -u root -p
+```
+
+Password:
+
+```text
+sqlpassword
+```
+
+If the command fails with `Access denied`, the local MySQL `root` password is
+not `sqlpassword`. Either use the correct password in the commands below, or
+update the MySQL root password locally before continuing.
+
+5. Copy `.env.example` to `.env` and edit DB credentials if needed.
+
+Recommended project database values:
+
+```bash
+DB_HOST=localhost
+DB_USER=root
+DB_PASSWORD=sqlpassword
+DB_NAME=localzh
+```
+
+6. Initialize the database from `init.sql`:
+
+```bash
+# from project root
+mysql -u root -psqlpassword < init.sql
+```
+
+Do not apply files from `migrations/` for the normal setup. The current schema
+used by the project is fully defined in `init.sql`.
+
+If you need to recreate the database from scratch during local development:
+
+```bash
+mysql -u root -psqlpassword -e "DROP DATABASE IF EXISTS localzh;"
+mysql -u root -psqlpassword < init.sql
+```
+
+7. Configure auth environment variables:
 
 ```bash
 PORT_OPEN=49161
@@ -61,7 +145,7 @@ local development. With SMTP configured, the link is sent to the account email.
 The `Utilisateur` address fields are not part of registration. Professional
 registration stores company address fields on `Entreprise`.
 
-4. Install dependencies and start server:
+8. Install dependencies and start server:
 
 ```bash
 npm install

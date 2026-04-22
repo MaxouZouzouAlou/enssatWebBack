@@ -4,6 +4,7 @@ import swaggerJsdoc from 'swagger-jsdoc';
 import swaggerUi from 'swagger-ui-express';
 import { toNodeHandler } from 'better-auth/node';
 import { auth } from './auth.js';
+import { seedSuperAdmin } from './seed/superadmin.js';
 import authProfileRouter from './routes/auth-profile.js';
 import incidentsRouter from './routes/incidents.js';
 import professionnelsRouter from './routes/professionnels.js';
@@ -51,4 +52,5 @@ app.use((err, req, res, next) => {
 app.listen(PORT_OPEN, async () => {
 	console.log(`Server is running on http://localhost:${PORT_OPEN}`);
 	console.log(`API documentation available at http://localhost:${PORT_OPEN}/api-docs`);
+	await seedSuperAdmin().catch(err => console.error('❌ Erreur seed superadmin :', err.message));
 });

@@ -12,6 +12,7 @@ CREATE TABLE `user` (
     emailVerified   BOOLEAN NOT NULL DEFAULT FALSE,
     image           TEXT,
     accountType     VARCHAR(50) DEFAULT 'particulier',
+    role            VARCHAR(50) NOT NULL DEFAULT 'user',
     firstName       VARCHAR(100),
     lastName        VARCHAR(100),
     createdAt       DATETIME NOT NULL,

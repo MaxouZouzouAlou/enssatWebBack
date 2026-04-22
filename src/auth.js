@@ -57,6 +57,12 @@ export const auth = betterAuth({
 				defaultValue: 'particulier',
 				input: true
 			},
+			role: {
+				type: 'string',
+				required: false,
+				defaultValue: 'user',
+				input: false
+			},
 			firstName: {
 				type: 'string',
 				required: false,
@@ -85,7 +91,20 @@ export const auth = betterAuth({
 			create: {
 				before: async (user, ctx) => {
 					const body = ctx?.body || {};
-					const accountType = normalizeAccountType(body.accountType || user.accountType || 'particulier');
+					const rawAccountType = body.accountType || user.accountType || 'particulier';
+
+					if (rawAccountType === 'superadmin') {
+						return {
+							data: {
+								...user,
+								accountType: 'superadmin',
+								firstName: body.prenom || body.firstName || user.firstName || null,
+								lastName: body.nom || body.lastName || user.lastName || null
+							}
+						};
+					}
+
+					const accountType = normalizeAccountType(rawAccountType);
 					if (accountType === 'professionnel') {
 						validateSiret(body.entreprise?.siret);
 						if (!String(body.entreprise?.nom || '').trim()) return false;
@@ -101,6 +120,7 @@ export const auth = betterAuth({
 					};
 				},
 				after: async (user, ctx) => {
+					if (user.accountType === 'superadmin') return;
 					const body = ctx?.body || {};
 					const accountType = normalizeAccountType(body.accountType || user.accountType || 'particulier');
 					await ensureBusinessProfile(user, {
