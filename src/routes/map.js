@@ -19,6 +19,10 @@ function coordinatesForLieu({ idLieu, ville }) {
   };
 }
 
+function isMissingTableError(err) {
+  return err?.code === 'ER_NO_SUCH_TABLE';
+}
+
 /**
  * @openapi
  * /map/lieux:
@@ -30,38 +34,80 @@ function coordinatesForLieu({ idLieu, ville }) {
  */
 router.get('/lieux', async (req, res, next) => {
   try {
-    const [rows] = await pool.query(
-      `SELECT
-          lv.idLieu,
-          lv.typeLieu,
-          lv.horaires,
-          lv.adresse_ligne,
-          lv.code_postal,
-          lv.ville,
-          COUNT(DISTINCT p.idProduit) AS offresCount
-       FROM LieuVente lv
-       LEFT JOIN Entreprise_LieuVente elv ON elv.idLieu = lv.idLieu
-       LEFT JOIN Professionnel_Entreprise pe ON pe.idEntreprise = elv.idEntreprise
-       LEFT JOIN Produit p ON p.idProfessionnel = pe.idProfessionnel AND p.visible = TRUE
-       GROUP BY lv.idLieu, lv.typeLieu, lv.horaires, lv.adresse_ligne, lv.code_postal, lv.ville
-       ORDER BY lv.idLieu ASC`
-    );
+    try {
+      const [rows] = await pool.query(
+        `SELECT
+            lv.idLieu,
+            lv.typeLieu,
+            lv.horaires,
+            lv.adresse_ligne,
+            lv.code_postal,
+            lv.ville,
+            COUNT(DISTINCT p.idProduit) AS offresCount
+         FROM LieuVente lv
+         LEFT JOIN Entreprise_LieuVente elv ON elv.idLieu = lv.idLieu
+         LEFT JOIN Professionnel_Entreprise pe ON pe.idEntreprise = elv.idEntreprise
+         LEFT JOIN Produit p ON p.idProfessionnel = pe.idProfessionnel AND p.visible = TRUE
+         GROUP BY lv.idLieu, lv.typeLieu, lv.horaires, lv.adresse_ligne, lv.code_postal, lv.ville
+         ORDER BY lv.idLieu ASC`
+      );
 
-    return res.json(
-      rows.map((row) => ({
-        idLieu: row.idLieu,
-        typeLieu: row.typeLieu,
-        horaires: row.horaires,
-        adresse: {
-          ligne: row.adresse_ligne,
-          codePostal: row.code_postal,
-          ville: row.ville,
-        },
-        coordinates: coordinatesForLieu(row),
-        offresCount: Number(row.offresCount || 0),
-      }))
-    );
+      return res.json(
+        rows.map((row) => ({
+          idLieu: row.idLieu,
+          typeLieu: row.typeLieu,
+          horaires: row.horaires,
+          adresse: {
+            ligne: row.adresse_ligne,
+            codePostal: row.code_postal,
+            ville: row.ville,
+          },
+          coordinates: coordinatesForLieu(row),
+          offresCount: Number(row.offresCount || 0),
+        }))
+      );
+    } catch (err) {
+      if (!isMissingTableError(err)) {
+        throw err;
+      }
+
+      const [rows] = await pool.query(
+        `SELECT
+            e.idEntreprise AS idLieu,
+            'Entreprise' AS typeLieu,
+            NULL AS horaires,
+            e.adresse_ligne,
+            e.code_postal,
+            e.ville,
+            COUNT(DISTINCT p.idProduit) AS offresCount
+         FROM Entreprise e
+         LEFT JOIN Professionnel_Entreprise pe ON pe.idEntreprise = e.idEntreprise
+         LEFT JOIN Produit p ON p.idProfessionnel = pe.idProfessionnel AND p.visible = TRUE
+         GROUP BY e.idEntreprise, e.adresse_ligne, e.code_postal, e.ville
+         HAVING COUNT(DISTINCT p.idProduit) > 0
+         ORDER BY e.idEntreprise ASC`
+      );
+
+      return res.json(
+        rows.map((row) => ({
+          idLieu: row.idLieu,
+          typeLieu: row.typeLieu,
+          horaires: row.horaires,
+          adresse: {
+            ligne: row.adresse_ligne,
+            codePostal: row.code_postal,
+            ville: row.ville,
+          },
+          coordinates: coordinatesForLieu({ idLieu: row.idLieu, ville: row.ville }),
+          offresCount: Number(row.offresCount || 0),
+          source: 'entreprise',
+        }))
+      );
+    }
   } catch (err) {
+    if (isMissingTableError(err)) {
+      return res.json([]);
+    }
     return next(err);
   }
 });
@@ -89,80 +135,168 @@ router.get('/lieux/:idLieu/offres', async (req, res, next) => {
   }
 
   try {
-    const [lieuRows] = await pool.query(
-      `SELECT idLieu, typeLieu, horaires, adresse_ligne, code_postal, ville
-       FROM LieuVente
-       WHERE idLieu = ?
-       LIMIT 1`,
-      [idLieu]
-    );
+    try {
+      const [lieuRows] = await pool.query(
+        `SELECT idLieu, typeLieu, horaires, adresse_ligne, code_postal, ville
+         FROM LieuVente
+         WHERE idLieu = ?
+         LIMIT 1`,
+        [idLieu]
+      );
 
-    if (!lieuRows.length) {
-      return res.status(404).json({ error: 'Lieu de vente introuvable.' });
+      if (!lieuRows.length) {
+        return res.status(404).json({ error: 'Lieu de vente introuvable.' });
+      }
+
+      const [offresRows] = await pool.query(
+        `SELECT DISTINCT
+            p.idProduit,
+            p.nom,
+            p.nature,
+            p.unitaireOuKilo,
+            p.bio,
+            p.prix,
+            p.reductionProfessionnel,
+            p.stock,
+            p.idProfessionnel,
+            u.nom AS producteurNom,
+            u.prenom AS producteurPrenom,
+            e.idEntreprise,
+            e.nom AS entrepriseNom
+         FROM Entreprise_LieuVente elv
+         JOIN Professionnel_Entreprise pe ON pe.idEntreprise = elv.idEntreprise
+         JOIN Produit p ON p.idProfessionnel = pe.idProfessionnel
+         JOIN Professionnel pr ON pr.idProfessionnel = p.idProfessionnel
+         JOIN Utilisateur u ON u.id = pr.id
+         LEFT JOIN Entreprise e ON e.idEntreprise = pe.idEntreprise
+         WHERE elv.idLieu = ?
+           AND p.visible = TRUE
+         ORDER BY p.nom ASC`,
+        [idLieu]
+      );
+
+      const lieu = lieuRows[0];
+
+      return res.json({
+        lieu: {
+          idLieu: lieu.idLieu,
+          typeLieu: lieu.typeLieu,
+          horaires: lieu.horaires,
+          adresse: {
+            ligne: lieu.adresse_ligne,
+            codePostal: lieu.code_postal,
+            ville: lieu.ville,
+          },
+          coordinates: coordinatesForLieu(lieu),
+        },
+        offres: offresRows.map((row) => ({
+          idProduit: row.idProduit,
+          nom: row.nom,
+          nature: row.nature,
+          unitaireOuKilo: Boolean(row.unitaireOuKilo),
+          bio: Boolean(row.bio),
+          prix: Number(row.prix),
+          reductionProfessionnel: Number(row.reductionProfessionnel),
+          stock: Number(row.stock),
+          idProfessionnel: row.idProfessionnel,
+          producteur: {
+            nom: row.producteurNom,
+            prenom: row.producteurPrenom,
+          },
+          entreprise: {
+            idEntreprise: row.idEntreprise,
+            nom: row.entrepriseNom,
+          },
+        })),
+      });
+    } catch (err) {
+      if (!isMissingTableError(err)) {
+        throw err;
+      }
+
+      const [entrepriseRows] = await pool.query(
+        `SELECT
+            e.idEntreprise,
+            e.nom,
+            e.adresse_ligne,
+            e.code_postal,
+            e.ville
+         FROM Entreprise e
+         WHERE e.idEntreprise = ?
+         LIMIT 1`,
+        [idLieu]
+      );
+
+      if (!entrepriseRows.length) {
+        return res.status(404).json({ error: 'Lieu de vente introuvable.' });
+      }
+
+      const [offresRows] = await pool.query(
+        `SELECT DISTINCT
+            p.idProduit,
+            p.nom,
+            p.nature,
+            p.unitaireOuKilo,
+            p.bio,
+            p.prix,
+            p.reductionProfessionnel,
+            p.stock,
+            p.idProfessionnel,
+            u.nom AS producteurNom,
+            u.prenom AS producteurPrenom,
+            e.idEntreprise,
+            e.nom AS entrepriseNom
+         FROM Professionnel_Entreprise pe
+         JOIN Produit p ON p.idProfessionnel = pe.idProfessionnel
+         JOIN Professionnel pr ON pr.idProfessionnel = p.idProfessionnel
+         JOIN Utilisateur u ON u.id = pr.id
+         JOIN Entreprise e ON e.idEntreprise = pe.idEntreprise
+         WHERE pe.idEntreprise = ?
+           AND p.visible = TRUE
+         ORDER BY p.nom ASC`,
+        [idLieu]
+      );
+
+      const entreprise = entrepriseRows[0];
+
+      return res.json({
+        lieu: {
+          idLieu: entreprise.idEntreprise,
+          typeLieu: 'Entreprise',
+          horaires: null,
+          adresse: {
+            ligne: entreprise.adresse_ligne,
+            codePostal: entreprise.code_postal,
+            ville: entreprise.ville,
+          },
+          coordinates: coordinatesForLieu({ idLieu: entreprise.idEntreprise, ville: entreprise.ville }),
+          source: 'entreprise',
+        },
+        offres: offresRows.map((row) => ({
+          idProduit: row.idProduit,
+          nom: row.nom,
+          nature: row.nature,
+          unitaireOuKilo: Boolean(row.unitaireOuKilo),
+          bio: Boolean(row.bio),
+          prix: Number(row.prix),
+          reductionProfessionnel: Number(row.reductionProfessionnel),
+          stock: Number(row.stock),
+          idProfessionnel: row.idProfessionnel,
+          producteur: {
+            nom: row.producteurNom,
+            prenom: row.producteurPrenom,
+          },
+          entreprise: {
+            idEntreprise: row.idEntreprise,
+            nom: row.entrepriseNom,
+          },
+        })),
+      });
     }
-
-    const [offresRows] = await pool.query(
-      `SELECT DISTINCT
-          p.idProduit,
-          p.nom,
-          p.nature,
-          p.unitaireOuKilo,
-          p.bio,
-          p.prix,
-          p.reductionProfessionnel,
-          p.stock,
-          p.idProfessionnel,
-          u.nom AS producteurNom,
-          u.prenom AS producteurPrenom,
-          e.idEntreprise,
-          e.nom AS entrepriseNom
-       FROM Entreprise_LieuVente elv
-       JOIN Professionnel_Entreprise pe ON pe.idEntreprise = elv.idEntreprise
-       JOIN Produit p ON p.idProfessionnel = pe.idProfessionnel
-       JOIN Professionnel pr ON pr.idProfessionnel = p.idProfessionnel
-       JOIN Utilisateur u ON u.id = pr.id
-       LEFT JOIN Entreprise e ON e.idEntreprise = pe.idEntreprise
-       WHERE elv.idLieu = ?
-         AND p.visible = TRUE
-       ORDER BY p.nom ASC`,
-      [idLieu]
-    );
-
-    const lieu = lieuRows[0];
-
-    return res.json({
-      lieu: {
-        idLieu: lieu.idLieu,
-        typeLieu: lieu.typeLieu,
-        horaires: lieu.horaires,
-        adresse: {
-          ligne: lieu.adresse_ligne,
-          codePostal: lieu.code_postal,
-          ville: lieu.ville,
-        },
-        coordinates: coordinatesForLieu(lieu),
-      },
-      offres: offresRows.map((row) => ({
-        idProduit: row.idProduit,
-        nom: row.nom,
-        nature: row.nature,
-        unitaireOuKilo: Boolean(row.unitaireOuKilo),
-        bio: Boolean(row.bio),
-        prix: Number(row.prix),
-        reductionProfessionnel: Number(row.reductionProfessionnel),
-        stock: Number(row.stock),
-        idProfessionnel: row.idProfessionnel,
-        producteur: {
-          nom: row.producteurNom,
-          prenom: row.producteurPrenom,
-        },
-        entreprise: {
-          idEntreprise: row.idEntreprise,
-          nom: row.entrepriseNom,
-        },
-      })),
-    });
   } catch (err) {
+    if (isMissingTableError(err)) {
+      return res.json({ lieu: null, offres: [] });
+    }
     return next(err);
   }
 });
