@@ -3,20 +3,9 @@ import pool from '../server_config/db.js';
 
 const router = express.Router();
 
-const CITY_BASE_COORDINATES = {
-  Rennes: { lat: 48.1173, lng: -1.6778 },
-  'Saint-Malo': { lat: 48.6493, lng: -2.0257 },
-  Dinard: { lat: 48.6329, lng: -2.0627 },
-};
-
-function coordinatesForLieu({ idLieu, ville }) {
-  const base = CITY_BASE_COORDINATES[ville] || CITY_BASE_COORDINATES.Rennes;
-  const offset = ((Number(idLieu) || 1) % 11) * 0.0011;
-
-  return {
-    latitude: Number((base.lat + offset).toFixed(6)),
-    longitude: Number((base.lng - offset).toFixed(6)),
-  };
+function coordinatesForLieu({ latitude, longitude }) {
+  if (latitude == null || longitude == null) return null;
+  return { latitude: Number(latitude), longitude: Number(longitude) };
 }
 
 function isMissingTableError(err) {
@@ -38,17 +27,19 @@ router.get('/lieux', async (req, res, next) => {
       const [rows] = await pool.query(
         `SELECT
             lv.idLieu,
-            lv.typeLieu,
+            lv.nom AS typeLieu,
             lv.horaires,
             lv.adresse_ligne,
             lv.code_postal,
             lv.ville,
+            lv.latitude,
+            lv.longitude,
             COUNT(DISTINCT p.idProduit) AS offresCount
          FROM LieuVente lv
          LEFT JOIN Entreprise_LieuVente elv ON elv.idLieu = lv.idLieu
          LEFT JOIN Professionnel_Entreprise pe ON pe.idEntreprise = elv.idEntreprise
          LEFT JOIN Produit p ON p.idProfessionnel = pe.idProfessionnel AND p.visible = TRUE
-         GROUP BY lv.idLieu, lv.typeLieu, lv.horaires, lv.adresse_ligne, lv.code_postal, lv.ville
+         GROUP BY lv.idLieu, lv.nom, lv.horaires, lv.adresse_ligne, lv.code_postal, lv.ville, lv.latitude, lv.longitude
          ORDER BY lv.idLieu ASC`
       );
 
@@ -79,6 +70,8 @@ router.get('/lieux', async (req, res, next) => {
             e.adresse_ligne,
             e.code_postal,
             e.ville,
+            NULL AS latitude,
+            NULL AS longitude,
             COUNT(DISTINCT p.idProduit) AS offresCount
          FROM Entreprise e
          LEFT JOIN Professionnel_Entreprise pe ON pe.idEntreprise = e.idEntreprise
@@ -98,7 +91,7 @@ router.get('/lieux', async (req, res, next) => {
             codePostal: row.code_postal,
             ville: row.ville,
           },
-          coordinates: coordinatesForLieu({ idLieu: row.idLieu, ville: row.ville }),
+          coordinates: coordinatesForLieu(row),
           offresCount: Number(row.offresCount || 0),
           source: 'entreprise',
         }))
@@ -137,7 +130,7 @@ router.get('/lieux/:idLieu/offres', async (req, res, next) => {
   try {
     try {
       const [lieuRows] = await pool.query(
-        `SELECT idLieu, typeLieu, horaires, adresse_ligne, code_postal, ville
+        `SELECT idLieu, nom AS typeLieu, horaires, adresse_ligne, code_postal, ville, latitude, longitude
          FROM LieuVente
          WHERE idLieu = ?
          LIMIT 1`,
@@ -269,7 +262,7 @@ router.get('/lieux/:idLieu/offres', async (req, res, next) => {
             codePostal: entreprise.code_postal,
             ville: entreprise.ville,
           },
-          coordinates: coordinatesForLieu({ idLieu: entreprise.idEntreprise, ville: entreprise.ville }),
+          coordinates: null,
           source: 'entreprise',
         },
         offres: offresRows.map((row) => ({

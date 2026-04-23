@@ -17,6 +17,58 @@ function parsePositiveInteger(value, fallback, max = 100) {
 	return Math.min(parsed, max);
 }
 
+const PRODUCT_SELECT_SQL = `
+	SELECT
+		p.*,
+		MIN(i.path) AS imagePath,
+		MAX(COALESCE(vp.noteMoyenne, 0)) AS noteMoyenneProduit,
+		MAX(COALESCE(vp.nombreAvis, 0)) AS nombreAvisProduit,
+		MAX(COALESCE(vpro.noteMoyenne, 0)) AS noteMoyenneProducteur,
+		MAX(COALESCE(vpro.nombreAvis, 0)) AS nombreAvisProducteur
+	 FROM Produit p
+	 LEFT JOIN Produit_Image pi ON pi.idProduit = p.idProduit
+	 LEFT JOIN Image i ON i.idImage = pi.idImage
+	 LEFT JOIN Vue_Note_Moyenne_Produit vp ON vp.idProduit = p.idProduit
+	 LEFT JOIN Vue_Note_Moyenne_Professionnel vpro ON vpro.idProfessionnel = p.idProfessionnel
+`;
+
+async function fetchProductById(client, idProduit) {
+	const [rows] = await client.query(`${PRODUCT_SELECT_SQL} WHERE p.idProduit = ? GROUP BY p.idProduit`, [idProduit]);
+	return rows[0] || null;
+}
+
+function parseCompanyId(value) {
+	if (value == null || value === '') return null;
+	const parsed = Number(value);
+	return Number.isInteger(parsed) && parsed > 0 ? parsed : NaN;
+}
+
+async function findAuthorizedCompanyId(client, idProfessionnel, requestedCompanyId) {
+	if (requestedCompanyId == null) return null;
+	const [rows] = await client.query(
+		`SELECT pe.idEntreprise
+		 FROM Professionnel_Entreprise pe
+		 WHERE pe.idProfessionnel = ? AND pe.idEntreprise = ?
+		 LIMIT 1`,
+		[idProfessionnel, requestedCompanyId]
+	);
+	return rows[0]?.idEntreprise || null;
+}
+
+async function fetchProductsByProfessional(client, idProfessionnel, idEntreprise = null) {
+	const filters = ['p.idProfessionnel = ?'];
+	const params = [idProfessionnel];
+	if (idEntreprise != null) {
+		filters.push('p.idEntreprise = ?');
+		params.push(idEntreprise);
+	}
+	const [rows] = await client.query(
+		`${PRODUCT_SELECT_SQL} WHERE ${filters.join(' AND ')} GROUP BY p.idProduit ORDER BY p.idProduit`,
+		params
+	);
+	return rows;
+}
+
 /** 
  * @openapi
  * /products:
@@ -115,32 +167,31 @@ router.get('/professionnel/:idProfessionnel', async (req, res, next) => {
 			return res.status(400).json({ error: 'ID professionnel invalide.' });
 		}
 
-		const [rows] = await pool.query(
-			`SELECT p.*, i.path AS imagePath
-			 FROM Produit p
-			 LEFT JOIN Image i ON p.idImage = i.idImage
-			 WHERE p.idProfessionnel = ?`,
-			[idProfessionnel]
-		);
+		const requestedCompanyId = parseCompanyId(req.query?.idEntreprise);
+		if (Number.isNaN(requestedCompanyId)) {
+			return res.status(400).json({ error: 'Identifiant entreprise invalide.' });
+		}
 
-		const enriched = await Promise.all(
-			rows.map(async (r) => {
-				const imgPath = r.imagePath;
-				if (!imgPath) return { ...r, imageData: null };
+		const rows = await fetchProductsByProfessional(db, idProfessionnel, requestedCompanyId);
+		res.json(rows);
+	} catch (err) {
+		next(err);
+	}
+});
 
-				const localPath = path.join(process.cwd(), 'src', imgPath.replace(/^\//, ''));
-				try {
-					const buf = await fs.readFile(localPath);
-					const ext = path.extname(localPath).toLowerCase().replace('.', '') || 'jpg';
-					const mime = ext === 'png' ? 'image/png' : 'image/jpeg';
-					return { ...r, imageData: `data:${mime};base64,${buf.toString('base64')}` };
-				} catch (err) {
-					return { ...r, imageData: null };
-				}
-			})
-		);
+router.get('/:idProduit', async (req, res, next) => {
+	try {
+		const idProduit = Number(req.params.idProduit);
+		if (!Number.isInteger(idProduit) || idProduit <= 0) {
+			return res.status(400).json({ error: 'Identifiant produit invalide.' });
+		}
 
-		res.json(enriched);
+		const product = await fetchProductById(db, idProduit);
+		if (!product || product.visible === 0 || product.visible === '0' || product.visible === false) {
+			return res.status(404).json({ error: 'Produit introuvable.' });
+		}
+
+		return res.json(product);
 	} catch (err) {
 		next(err);
 	}
@@ -203,6 +254,11 @@ router.post('/professionnel/:idProfessionnel', requireProfessionalSession, uploa
 	const bio = body.bio != null ? (String(body.bio) === 'true' || String(body.bio) === '1') : false;
 	const tva = body.tva != null ? Number(body.tva) : 0;
 	const reductionPro = body.reductionPro != null ? Number(body.reductionPro) : 0;
+	const requestedCompanyId = parseCompanyId(body.idEntreprise ?? req.query?.idEntreprise ?? req.businessProfile?.professionnel?.entreprise?.id);
+
+	if (Number.isNaN(requestedCompanyId)) {
+		return res.status(400).json({ error: 'Identifiant entreprise invalide.' });
+	}
 
 	if (!nom || prix == null || isNaN(prix)) {
 		return res.status(400).json({ error: 'Nom et prix du produit requis.' });
@@ -211,6 +267,11 @@ router.post('/professionnel/:idProfessionnel', requireProfessionalSession, uploa
 	const conn = await pool.getConnection();
 	try {
 		await conn.beginTransaction();
+		const companyId = await findAuthorizedCompanyId(conn, idProfessionnel, requestedCompanyId);
+		if (!companyId) {
+			await conn.rollback();
+			return res.status(403).json({ error: 'Entreprise non autorisee pour ce professionnel.' });
+		}
 
 		let idImage = null;
 		if (req.file) {
@@ -221,23 +282,19 @@ router.post('/professionnel/:idProfessionnel', requireProfessionalSession, uploa
 
 		const [prodRes] = await conn.execute(
 			`INSERT INTO Produit
-			 (idProfessionnel, nom, nature, unitaireOuKilo, bio, prix, tva, reductionProfessionnel, stock, visible, idImage)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE, ?)`,
-			[idProfessionnel, nom, nature, unitaireOuKilo ? 1 : 0, bio ? 1 : 0, prix, tva, reductionPro, stock, idImage]
+			 (idProfessionnel, idEntreprise, nom, nature, unitaireOuKilo, bio, prix, tva, reductionProfessionnel, stock, visible)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE)`,
+			[idProfessionnel, companyId, nom, nature, unitaireOuKilo ? 1 : 0, bio ? 1 : 0, prix, tva, reductionPro, stock]
 		);
+
+		if (idImage) {
+			await conn.execute('INSERT INTO Produit_Image (idProduit, idImage) VALUES (?, ?)', [prodRes.insertId, idImage]);
+		}
 
 		await conn.commit();
 
-		const insertedId = prodRes.insertId;
-		const [rows] = await pool.query(
-			`SELECT p.*, i.path AS imagePath
-			 FROM Produit p
-			 LEFT JOIN Image i ON p.idImage = i.idImage
-			 WHERE p.idProduit = ?`,
-			[insertedId]
-		);
-
-		res.status(201).json(rows[0] || null);
+		const created = await fetchProductById(db, prodRes.insertId);
+		res.status(201).json(created);
 	} catch (err) {
 		await conn.rollback();
 		return next(err);
@@ -256,6 +313,10 @@ router.put('/professionnel/:idProfessionnel/:idProduit', requireProfessionalSess
 
 	if (req.businessProfile.professionnel.id !== idProfessionnel) {
 		return res.status(403).json({ error: 'Acces interdit pour ce professionnel.' });
+	}
+	const requestedCompanyId = parseCompanyId(req.body?.idEntreprise ?? req.query?.idEntreprise);
+	if (Number.isNaN(requestedCompanyId)) {
+		return res.status(400).json({ error: 'Identifiant entreprise invalide.' });
 	}
 
 	const body = (req.body && Object.keys(req.body).length) ? req.body : req.body || {};
@@ -286,17 +347,28 @@ router.put('/professionnel/:idProfessionnel/:idProduit', requireProfessionalSess
 			await conn.rollback();
 			return res.status(403).json({ error: 'Acces interdit pour ce produit.' });
 		}
+		if (requestedCompanyId != null && existing.idEntreprise !== requestedCompanyId) {
+			await conn.rollback();
+			return res.status(403).json({ error: 'Ce produit n appartient pas a l entreprise selectionnee.' });
+		}
 
-		let newImageId = existing.idImage;
-		let oldImagePath = null;
+		const [existingImageRows] = await conn.execute(
+			`SELECT pi.idImage, i.path
+			 FROM Produit_Image pi
+			 INNER JOIN Image i ON i.idImage = pi.idImage
+			 WHERE pi.idProduit = ?
+			 FOR UPDATE`,
+			[idProduit]
+		);
+
+		const existingImages = existingImageRows.map((row) => ({ idImage: row.idImage, path: row.path }));
+		let newImageId = null;
 		if (req.file) {
 			const relPath = `/images/produits/${req.file.filename}`;
 			const [imgRes] = await conn.execute('INSERT INTO Image (path) VALUES (?)', [relPath]);
 			newImageId = imgRes.insertId;
-			if (existing.idImage) {
-				const [oldImgRows] = await conn.execute('SELECT path FROM Image WHERE idImage = ? LIMIT 1', [existing.idImage]);
-				oldImagePath = oldImgRows[0]?.path || null;
-			}
+			await conn.execute('DELETE FROM Produit_Image WHERE idProduit = ?', [idProduit]);
+			await conn.execute('INSERT INTO Produit_Image (idProduit, idImage) VALUES (?, ?)', [idProduit, newImageId]);
 		}
 
 		// Build update query dynamically
@@ -311,35 +383,32 @@ router.put('/professionnel/:idProfessionnel/:idProduit', requireProfessionalSess
 		if (fieldsToUpdate.reductionProfessionnel !== undefined) { updates.push('reductionProfessionnel = ?'); params.push(fieldsToUpdate.reductionProfessionnel); }
 		if (fieldsToUpdate.stock !== undefined) { updates.push('stock = ?'); params.push(fieldsToUpdate.stock); }
 		if (fieldsToUpdate.visible !== undefined) { updates.push('visible = ?'); params.push(fieldsToUpdate.visible ? 1 : 0); }
-		if (req.file) { updates.push('idImage = ?'); params.push(newImageId); }
 
 		if (updates.length) {
 			params.push(idProduit);
 			await conn.execute(`UPDATE Produit SET ${updates.join(', ')} WHERE idProduit = ?`, params);
 		}
 
-		if (req.file && oldImagePath) {
-			// delete old file if exists
-			try {
-				const localPath = path.join(process.cwd(), 'src', oldImagePath.replace(/^\//, ''));
-				await fs.unlink(localPath).catch(() => {});
-			} catch (e) { /* ignore */ }
-			// delete old image DB row
-			try {
-				await conn.execute('DELETE FROM Image WHERE path = ? LIMIT 1', [oldImagePath]);
-			} catch (e) { /* ignore */ }
+		if (req.file) {
+			for (const image of existingImages) {
+				try {
+					const localPath = path.join(process.cwd(), 'src', image.path.replace(/^\//, ''));
+					await fs.unlink(localPath).catch(() => {});
+				} catch (e) { /* ignore */ }
+
+				try {
+					await conn.execute(
+						'DELETE FROM Image WHERE idImage = ? AND NOT EXISTS (SELECT 1 FROM Produit_Image WHERE idImage = ?)',
+						[image.idImage, image.idImage]
+					);
+				} catch (e) { /* ignore */ }
+			}
 		}
 
 		await conn.commit();
 
-		const [rows] = await pool.query(
-			`SELECT p.*, i.path AS imagePath
-			 FROM Produit p
-			 LEFT JOIN Image i ON p.idImage = i.idImage
-			 WHERE p.idProduit = ?`,
-			[idProduit]
-		);
-		return res.json(rows[0] || null);
+		const updated = await fetchProductById(db, idProduit);
+		return res.json(updated);
 	} catch (err) {
 		await conn.rollback();
 		return next(err);
@@ -359,25 +428,52 @@ router.delete('/professionnel/:idProfessionnel/:idProduit', requireProfessionalS
 	if (req.businessProfile.professionnel.id !== idProfessionnel) {
 		return res.status(403).json({ error: 'Acces interdit pour ce professionnel.' });
 	}
+	const requestedCompanyId = parseCompanyId(req.query?.idEntreprise);
+	if (Number.isNaN(requestedCompanyId)) {
+		return res.status(400).json({ error: 'Identifiant entreprise invalide.' });
+	}
 
 	const conn = await pool.getConnection();
 	try {
 		await conn.beginTransaction();
 
-		const [rows] = await conn.execute('SELECT idImage FROM Produit WHERE idProduit = ? FOR UPDATE', [idProduit]);
+		if (requestedCompanyId != null) {
+			const [productRows] = await conn.execute(
+				'SELECT idEntreprise FROM Produit WHERE idProduit = ? FOR UPDATE',
+				[idProduit]
+			);
+			if (!productRows.length) {
+				await conn.rollback();
+				return res.status(404).json({ error: 'Produit introuvable.' });
+			}
+			if (productRows[0].idEntreprise !== requestedCompanyId) {
+				await conn.rollback();
+				return res.status(403).json({ error: 'Ce produit n appartient pas a l entreprise selectionnee.' });
+			}
+		}
+
+		const [rows] = await conn.execute(
+			`SELECT pi.idImage, i.path
+			 FROM Produit_Image pi
+			 INNER JOIN Image i ON i.idImage = pi.idImage
+			 WHERE pi.idProduit = ?
+			 FOR UPDATE`,
+			[idProduit]
+		);
 		if (!rows.length) { await conn.rollback(); return res.status(404).json({ error: 'Produit introuvable.' }); }
-		const prod = rows[0];
+		const linkedImages = rows.map((row) => ({ idImage: row.idImage, path: row.path }));
 
 		// delete product
 		await conn.execute('DELETE FROM Produit WHERE idProduit = ?', [idProduit]);
 
-		if (prod.idImage) {
-			const [imgRows] = await conn.execute('SELECT path FROM Image WHERE idImage = ? LIMIT 1', [prod.idImage]);
-			const imgPath = imgRows[0]?.path;
-			if (imgPath) {
-				try { await fs.unlink(path.join(process.cwd(), 'src', imgPath.replace(/^\//, ''))).catch(() => {}); } catch (e) { /* ignore */ }
+		for (const image of linkedImages) {
+			if (image.path) {
+				try { await fs.unlink(path.join(process.cwd(), 'src', image.path.replace(/^\//, ''))).catch(() => {}); } catch (e) { /* ignore */ }
 			}
-			await conn.execute('DELETE FROM Image WHERE idImage = ?', [prod.idImage]);
+			await conn.execute(
+				'DELETE FROM Image WHERE idImage = ? AND NOT EXISTS (SELECT 1 FROM Produit_Image WHERE idImage = ?)',
+				[image.idImage, image.idImage]
+			);
 		}
 
 		await conn.commit();

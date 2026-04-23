@@ -7,6 +7,7 @@ import {
 	ConflictError,
 	ensureBusinessProfile,
 	getBusinessProfileByAuthUserId,
+	updatePersonalAddressByAuthUserId,
 	validateRegistrationPayload,
 	ValidationError
 } from '../services/auth-profile-service.js';
@@ -94,6 +95,23 @@ router.get('/profile', async (req, res) => {
 			session,
 			profile
 		});
+	} catch (error) {
+		return handleAuthError(error, res);
+	}
+});
+
+router.put('/profile/address', express.json(), async (req, res) => {
+	try {
+		const session = await auth.api.getSession({
+			headers: fromNodeHeaders(req.headers)
+		});
+
+		if (!session) {
+			return res.status(401).json({ error: 'Non authentifie.' });
+		}
+
+		const profile = await updatePersonalAddressByAuthUserId(session.user.id, req.body || {});
+		return res.json({ profile });
 	} catch (error) {
 		return handleAuthError(error, res);
 	}

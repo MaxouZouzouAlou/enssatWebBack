@@ -392,6 +392,33 @@ export async function getBusinessProfileByAuthUserId(authUserId) {
 	};
 }
 
+export async function updatePersonalAddressByAuthUserId(authUserId, payload = {}) {
+	const adresseLigne = trim(payload.adresse_ligne);
+	const codePostal = trim(payload.code_postal);
+	const ville = trim(payload.ville);
+
+	if (!adresseLigne || !codePostal || !ville) {
+		throw new ValidationError('Adresse incomplete.');
+	}
+
+	validatePostalCode(codePostal);
+
+	const profile = await getBusinessProfileByAuthUserId(authUserId);
+	if (!profile?.particulier?.id) {
+		throw new ValidationError('Seuls les comptes particuliers peuvent enregistrer une adresse personnelle.');
+	}
+
+	await pool.execute(
+		`UPDATE Utilisateur u
+		 INNER JOIN Particulier p ON p.id = u.id
+		 SET u.adresse_ligne = ?, u.code_postal = ?, u.ville = ?
+		 WHERE p.idParticulier = ?`,
+		[adresseLigne, codePostal, ville, profile.particulier.id]
+	);
+
+	return getBusinessProfileByAuthUserId(authUserId);
+}
+
 function getFirstName(name) {
 	const parts = trim(name).split(/\s+/).filter(Boolean);
 	if (!parts.length) return '';

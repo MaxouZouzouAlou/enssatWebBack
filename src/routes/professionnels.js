@@ -26,6 +26,24 @@ function pctChange(current, previous) {
 	return ((c - p) / p) * 100;
 }
 
+function parseCompanyId(value) {
+	if (value == null || value === '') return null;
+	const parsed = Number(value);
+	return Number.isInteger(parsed) && parsed > 0 ? parsed : NaN;
+}
+
+async function resolveScopedCompanyId(idProfessionnel, requestedCompanyId) {
+	if (requestedCompanyId == null) return null;
+	const [rows] = await pool.query(
+		`SELECT pe.idEntreprise
+		 FROM Professionnel_Entreprise pe
+		 WHERE pe.idProfessionnel = ? AND pe.idEntreprise = ?
+		 LIMIT 1`,
+		[idProfessionnel, requestedCompanyId]
+	);
+	return rows[0]?.idEntreprise || null;
+}
+
 async function requireProfessionalSession(req, res, next) {
 	try {
 		const session = await auth.api.getSession({
@@ -73,9 +91,14 @@ async function requireProfessionalSession(req, res, next) {
  */
 router.get('/:idProfessionnel/dashboard', requireProfessionalSession, async (req, res, next) => {
 	const idProfessionnel = Number(req.params.idProfessionnel);
+	const requestedCompanyId = parseCompanyId(req.query?.idEntreprise);
 
 	if (!Number.isInteger(idProfessionnel) || idProfessionnel <= 0) {
 		return res.status(400).json({ error: 'Identifiant professionnel invalide.' });
+	}
+
+	if (Number.isNaN(requestedCompanyId)) {
+		return res.status(400).json({ error: 'Identifiant entreprise invalide.' });
 	}
 
 	if (req.businessProfile.professionnel.id !== idProfessionnel) {
@@ -83,6 +106,14 @@ router.get('/:idProfessionnel/dashboard', requireProfessionalSession, async (req
 	}
 
 	try {
+		const scopedCompanyId = await resolveScopedCompanyId(idProfessionnel, requestedCompanyId);
+		if (requestedCompanyId != null && !scopedCompanyId) {
+			return res.status(403).json({ error: 'Entreprise non autorisee pour ce professionnel.' });
+		}
+
+		const companyFilter = scopedCompanyId != null ? ' AND p.idEntreprise = ?' : '';
+		const companyParams = scopedCompanyId != null ? [scopedCompanyId] : [];
+
 		const [proRows] = await pool.query(
 			`SELECT p.idProfessionnel, u.nom, u.prenom, u.email
 			 FROM Professionnel p
@@ -103,9 +134,9 @@ router.get('/:idProfessionnel/dashboard', requireProfessionalSession, async (req
 			 FROM LigneCommande lc
 			 JOIN Produit p ON p.idProduit = lc.idProduit
 			 JOIN Commande c ON c.idCommande = lc.idCommande
-			 WHERE p.idProfessionnel = ?
+			 WHERE p.idProfessionnel = ?${companyFilter}
 				 AND c.dateCommande >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)`,
-			[idProfessionnel]
+			[idProfessionnel, ...companyParams]
 		);
 
 		const [previousPeriodRows] = await pool.query(
@@ -116,19 +147,19 @@ router.get('/:idProfessionnel/dashboard', requireProfessionalSession, async (req
 			 FROM LigneCommande lc
 			 JOIN Produit p ON p.idProduit = lc.idProduit
 			 JOIN Commande c ON c.idCommande = lc.idCommande
-			 WHERE p.idProfessionnel = ?
+			 WHERE p.idProfessionnel = ?${companyFilter}
 				 AND c.dateCommande >= DATE_SUB(CURDATE(), INTERVAL 60 DAY)
 				 AND c.dateCommande < DATE_SUB(CURDATE(), INTERVAL 30 DAY)`,
-			[idProfessionnel]
+			[idProfessionnel, ...companyParams]
 		);
 
 		const [stockRows] = await pool.query(
 			`SELECT
 				 COALESCE(COUNT(*), 0) AS totalProducts,
 				 COALESCE(SUM(CASE WHEN stock <= 0 THEN 1 ELSE 0 END), 0) AS outOfStockProducts
-			 FROM Produit
-			 WHERE idProfessionnel = ?`,
-			[idProfessionnel]
+			 FROM Produit p
+			 WHERE p.idProfessionnel = ?${companyFilter}`,
+			[idProfessionnel, ...companyParams]
 		);
 
 		const [monthlyRows] = await pool.query(
@@ -140,11 +171,11 @@ router.get('/:idProfessionnel/dashboard', requireProfessionalSession, async (req
 			 FROM LigneCommande lc
 			 JOIN Produit p ON p.idProduit = lc.idProduit
 			 JOIN Commande c ON c.idCommande = lc.idCommande
-			 WHERE p.idProfessionnel = ?
+			 WHERE p.idProfessionnel = ?${companyFilter}
 				 AND c.dateCommande >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH)
 			 GROUP BY monthKey, monthLabel
 			 ORDER BY monthKey`,
-			[idProfessionnel]
+			[idProfessionnel, ...companyParams]
 		);
 
 		const [topProductsRows] = await pool.query(
@@ -156,11 +187,11 @@ router.get('/:idProfessionnel/dashboard', requireProfessionalSession, async (req
 			 FROM LigneCommande lc
 			 JOIN Produit p ON p.idProduit = lc.idProduit
 			 JOIN Commande c ON c.idCommande = lc.idCommande
-			 WHERE p.idProfessionnel = ?
+			 WHERE p.idProfessionnel = ?${companyFilter}
 			 GROUP BY p.idProduit, p.nom
 			 ORDER BY sales DESC
 			 LIMIT 5`,
-			[idProfessionnel]
+			[idProfessionnel, ...companyParams]
 		);
 
 		const [channelsRows] = await pool.query(
@@ -170,10 +201,10 @@ router.get('/:idProfessionnel/dashboard', requireProfessionalSession, async (req
 			 FROM LigneCommande lc
 			 JOIN Produit p ON p.idProduit = lc.idProduit
 			 JOIN Commande c ON c.idCommande = lc.idCommande
-			 WHERE p.idProfessionnel = ?
+			 WHERE p.idProfessionnel = ?${companyFilter}
 			 GROUP BY COALESCE(c.modeLivraison, 'non_renseigne')
 			 ORDER BY value DESC`,
-			[idProfessionnel]
+			[idProfessionnel, ...companyParams]
 		);
 
 		const [topCustomersRows] = await pool.query(
@@ -186,7 +217,7 @@ router.get('/:idProfessionnel/dashboard', requireProfessionalSession, async (req
 				 FROM LigneCommande lc
 				 JOIN Produit p ON p.idProduit = lc.idProduit
 				 JOIN Commande c ON c.idCommande = lc.idCommande
-				 WHERE p.idProfessionnel = ?
+				 WHERE p.idProfessionnel = ?${companyFilter}
 				 GROUP BY c.idCommande, c.idParticulier
 			 ) AS perOrder
 			 JOIN Commande c ON c.idCommande = perOrder.idCommande
@@ -195,7 +226,7 @@ router.get('/:idProfessionnel/dashboard', requireProfessionalSession, async (req
 			 GROUP BY customer
 			 ORDER BY revenue DESC
 			 LIMIT 5`,
-			[idProfessionnel]
+			[idProfessionnel, ...companyParams]
 		);
 
 		const [recentOrdersRows] = await pool.query(
@@ -208,11 +239,11 @@ router.get('/:idProfessionnel/dashboard', requireProfessionalSession, async (req
 			 FROM LigneCommande lc
 			 JOIN Produit p ON p.idProduit = lc.idProduit
 			 JOIN Commande c ON c.idCommande = lc.idCommande
-			 WHERE p.idProfessionnel = ?
+			 WHERE p.idProfessionnel = ?${companyFilter}
 			 GROUP BY c.idCommande, c.dateCommande, c.modeLivraison, c.status
 			 ORDER BY c.dateCommande DESC
 			 LIMIT 12`,
-			[idProfessionnel]
+			[idProfessionnel, ...companyParams]
 		);
 
 		const current = currentPeriodRows[0] || { revenue: 0, sales: 0, orders: 0 };
@@ -228,6 +259,9 @@ router.get('/:idProfessionnel/dashboard', requireProfessionalSession, async (req
 				idProfessionnel: proRows[0].idProfessionnel,
 				name: `${proRows[0].prenom} ${proRows[0].nom}`.trim(),
 				email: proRows[0].email
+			},
+			scope: {
+				idEntreprise: scopedCompanyId || null
 			},
 			metrics: {
 				revenue30d: Number(current.revenue),
@@ -278,6 +312,7 @@ router.get('/:idProfessionnel/dashboard', requireProfessionalSession, async (req
 router.get('/:idProfessionnel/documents/commande/:idCommande/facture', requireProfessionalSession, async (req, res, next) => {
 	const idProfessionnel = Number(req.params.idProfessionnel);
 	const idCommande = Number(req.params.idCommande);
+	const requestedCompanyId = parseCompanyId(req.query?.idEntreprise);
 
 	if (!Number.isInteger(idProfessionnel) || idProfessionnel <= 0) {
 		return res.status(400).json({ error: 'Identifiant professionnel invalide.' });
@@ -286,12 +321,19 @@ router.get('/:idProfessionnel/documents/commande/:idCommande/facture', requirePr
 	if (!Number.isInteger(idCommande) || idCommande <= 0) {
 		return res.status(400).json({ error: 'Identifiant commande invalide.' });
 	}
+	if (Number.isNaN(requestedCompanyId)) {
+		return res.status(400).json({ error: 'Identifiant entreprise invalide.' });
+	}
 
 	if (req.businessProfile.professionnel.id !== idProfessionnel) {
 		return res.status(403).json({ error: 'Acces interdit pour ce professionnel.' });
 	}
 
 	try {
+		const scopedCompanyId = await resolveScopedCompanyId(idProfessionnel, requestedCompanyId);
+		if (requestedCompanyId != null && !scopedCompanyId) {
+			return res.status(403).json({ error: 'Entreprise non autorisee pour ce professionnel.' });
+		}
 		const [lineRows] = await pool.query(
 			`SELECT
 				p.idProduit,
@@ -302,8 +344,9 @@ router.get('/:idProfessionnel/documents/commande/:idCommande/facture', requirePr
 			 JOIN Produit p ON p.idProduit = lc.idProduit
 			 WHERE lc.idCommande = ?
 			   AND p.idProfessionnel = ?
+			   ${scopedCompanyId != null ? 'AND p.idEntreprise = ?' : ''}
 			 ORDER BY p.nom ASC`,
-			[idCommande, idProfessionnel]
+			scopedCompanyId != null ? [idCommande, idProfessionnel, scopedCompanyId] : [idCommande, idProfessionnel]
 		);
 
 		if (!lineRows.length) {
@@ -359,6 +402,7 @@ router.get('/:idProfessionnel/documents/commande/:idCommande/facture', requirePr
 router.get('/:idProfessionnel/documents/commande/:idCommande/facture.pdf', requireProfessionalSession, async (req, res, next) => {
 	const idProfessionnel = Number(req.params.idProfessionnel);
 	const idCommande = Number(req.params.idCommande);
+	const requestedCompanyId = parseCompanyId(req.query?.idEntreprise);
 
 	if (!Number.isInteger(idProfessionnel) || idProfessionnel <= 0) {
 		return res.status(400).json({ error: 'Identifiant professionnel invalide.' });
@@ -367,12 +411,19 @@ router.get('/:idProfessionnel/documents/commande/:idCommande/facture.pdf', requi
 	if (!Number.isInteger(idCommande) || idCommande <= 0) {
 		return res.status(400).json({ error: 'Identifiant commande invalide.' });
 	}
+	if (Number.isNaN(requestedCompanyId)) {
+		return res.status(400).json({ error: 'Identifiant entreprise invalide.' });
+	}
 
 	if (req.businessProfile.professionnel.id !== idProfessionnel) {
 		return res.status(403).json({ error: 'Acces interdit pour ce professionnel.' });
 	}
 
 	try {
+		const scopedCompanyId = await resolveScopedCompanyId(idProfessionnel, requestedCompanyId);
+		if (requestedCompanyId != null && !scopedCompanyId) {
+			return res.status(403).json({ error: 'Entreprise non autorisee pour ce professionnel.' });
+		}
 		const [lineRows] = await pool.query(
 			`SELECT
 				p.idProduit,
@@ -383,8 +434,9 @@ router.get('/:idProfessionnel/documents/commande/:idCommande/facture.pdf', requi
 			 JOIN Produit p ON p.idProduit = lc.idProduit
 			 WHERE lc.idCommande = ?
 			   AND p.idProfessionnel = ?
+			   ${scopedCompanyId != null ? 'AND p.idEntreprise = ?' : ''}
 			 ORDER BY p.nom ASC`,
-			[idCommande, idProfessionnel]
+			scopedCompanyId != null ? [idCommande, idProfessionnel, scopedCompanyId] : [idCommande, idProfessionnel]
 		);
 
 		if (!lineRows.length) {
@@ -457,9 +509,13 @@ router.get('/:idProfessionnel/documents/commande/:idCommande/facture.pdf', requi
 
 router.get('/:idProfessionnel/documents/ventes.csv', requireProfessionalSession, async (req, res, next) => {
 	const idProfessionnel = Number(req.params.idProfessionnel);
+	const requestedCompanyId = parseCompanyId(req.query?.idEntreprise);
 
 	if (!Number.isInteger(idProfessionnel) || idProfessionnel <= 0) {
 		return res.status(400).json({ error: 'Identifiant professionnel invalide.' });
+	}
+	if (Number.isNaN(requestedCompanyId)) {
+		return res.status(400).json({ error: 'Identifiant entreprise invalide.' });
 	}
 
 	if (req.businessProfile.professionnel.id !== idProfessionnel) {
@@ -470,6 +526,10 @@ router.get('/:idProfessionnel/documents/ventes.csv', requireProfessionalSession,
 	const safeDays = Number.isInteger(days) && days > 0 && days <= 365 ? days : 90;
 
 	try {
+		const scopedCompanyId = await resolveScopedCompanyId(idProfessionnel, requestedCompanyId);
+		if (requestedCompanyId != null && !scopedCompanyId) {
+			return res.status(403).json({ error: 'Entreprise non autorisee pour ce professionnel.' });
+		}
 		const [rows] = await pool.query(
 			`SELECT
 				c.idCommande,
@@ -484,9 +544,10 @@ router.get('/:idProfessionnel/documents/ventes.csv', requireProfessionalSession,
 			 JOIN Produit p ON p.idProduit = lc.idProduit
 			 JOIN Commande c ON c.idCommande = lc.idCommande
 			 WHERE p.idProfessionnel = ?
+			   ${scopedCompanyId != null ? 'AND p.idEntreprise = ?' : ''}
 			   AND c.dateCommande >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
 			 ORDER BY c.dateCommande DESC, c.idCommande DESC`,
-			[idProfessionnel, safeDays]
+			scopedCompanyId != null ? [idProfessionnel, scopedCompanyId, safeDays] : [idProfessionnel, safeDays]
 		);
 
 		const headers = ['idCommande', 'dateCommande', 'modeLivraison', 'status', 'idProduit', 'produit', 'quantite', 'prixTTC'];

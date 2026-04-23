@@ -196,6 +196,7 @@ CREATE TABLE Image (
 CREATE TABLE Produit (
     idProduit              INT           PRIMARY KEY AUTO_INCREMENT,
     idProfessionnel        INT           NOT NULL,
+    idEntreprise           INT           NOT NULL,
     nom                    VARCHAR(255)  NOT NULL,
     nature                 ENUM('Légume', 'Fruit', 'Viande', 'Boulangerie', 'Poisson', 'Laitier', 'Autre') NOT NULL,
     unitaireOuKilo         BOOLEAN       NOT NULL DEFAULT TRUE,
@@ -207,6 +208,9 @@ CREATE TABLE Produit (
     visible                BOOLEAN       NOT NULL DEFAULT TRUE,
     CONSTRAINT fk_produit_professionnel
         FOREIGN KEY (idProfessionnel) REFERENCES Professionnel(idProfessionnel)
+        ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_produit_entreprise
+        FOREIGN KEY (idEntreprise) REFERENCES Entreprise(idEntreprise)
         ON DELETE CASCADE ON UPDATE CASCADE,
     CONSTRAINT chk_produit_prix_nonneg       CHECK (prix >= 0),
     CONSTRAINT chk_produit_tva_range         CHECK (tva >= 0 AND tva <= 100),
@@ -236,7 +240,9 @@ CREATE TABLE LieuVente (
     nom  VARCHAR(100),
     adresse_ligne VARCHAR(255),
     code_postal   VARCHAR(10),
-    ville         VARCHAR(100)
+    ville         VARCHAR(100),
+    latitude      DECIMAL(9,6),
+    longitude     DECIMAL(9,6)
 );
 
 -- Entreprise expose Produit sur LieuVente (0..* -- 0..*)
@@ -304,6 +310,7 @@ CREATE TABLE Commande (
     idCommande      INT           PRIMARY KEY AUTO_INCREMENT,
     dateCommande    DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
     modeLivraison   VARCHAR(100),
+    modePaiement    VARCHAR(100),
     prixTotal       DECIMAL(10,2) NOT NULL DEFAULT 0,
     status          VARCHAR(50)   NOT NULL DEFAULT 'en_attente',
     idParticulier   INT,
@@ -355,6 +362,7 @@ CREATE TABLE LigneCommande (
     idProduit  INT           NOT NULL,
     quantite   FLOAT(5,3)    NOT NULL DEFAULT 1,
     prixTTC    DECIMAL(10,2) NOT NULL,
+    idLieu     INT,
     PRIMARY KEY (idCommande, idProduit),
     CONSTRAINT fk_lc_commande
         FOREIGN KEY (idCommande) REFERENCES Commande(idCommande)
@@ -362,6 +370,9 @@ CREATE TABLE LigneCommande (
     CONSTRAINT fk_lc_produit
         FOREIGN KEY (idProduit) REFERENCES Produit(idProduit)
         ON DELETE RESTRICT ON UPDATE CASCADE,
+    CONSTRAINT fk_lc_lieu
+        FOREIGN KEY (idLieu) REFERENCES LieuVente(idLieu)
+        ON DELETE SET NULL ON UPDATE CASCADE,
     CONSTRAINT chk_lc_quantite_pos CHECK (quantite > 0),
     CONSTRAINT chk_lc_prix_nonneg  CHECK (prixTTC >= 0)
 );
@@ -764,14 +775,14 @@ JOIN Produit p ON pp.idProduit = p.idProduit;
 
 -- Better Auth : utilisateurs
 INSERT INTO `user` (`id`, `name`, `email`, `emailVerified`, `role`, `image`, `accountType`, `firstName`, `lastName`, `createdAt`, `updatedAt`) VALUES
-('Zd4kfip6or78ukt2lHV5BObQGUJ0h4Kl', 'Testeur Test',  'testparticulier1@gmail.com',              1, 'user', NULL, 'particulier',   'Testeur', 'Test',   '2026-04-23 09:02:41', '2026-04-23 09:03:03'),
-('YGrii7v7iKcdvjXEznpuus97uVFcjugJ', 'Vendeur Test',  'testprofessionnel1@gmail.com',   1, 'user', NULL, 'professionnel', 'Vendeur', 'Test',   '2026-04-23 09:18:07', '2026-04-23 09:18:15'),
-('Qp7Hn2Lm9Xc4Vb1Ts8Kd5Rj3Wy6Uf0Za', 'Maraicher Test', 'testprofessionnel2@gmail.com',  1, 'user', NULL, 'professionnel', 'Maraicher', 'Test', '2026-04-23 09:18:07', '2026-04-23 09:18:15'),
-('Bn4Rt8Yp1Lk6Jm3Nh0Vf5Dc2Xs9Qa7We', 'Primeur Test',   'testprofessionnel3@gmail.com',  1, 'user', NULL, 'professionnel', 'Primeur', 'Test',   '2026-04-23 09:18:07', '2026-04-23 09:18:15'),
-('Hu3Ji7Ko1Lp9Mn5Bv2Cx8Dz4Sr6Ta0Ye', 'Artisan Test',   'testprofessionnel4@gmail.com',  1, 'user', NULL, 'professionnel', 'Artisan', 'Test',   '2026-04-23 09:18:07', '2026-04-23 09:18:15'),
-('Te5Yu1Io9Pa3Sd7Fg2Hj6Kl8Zx4Cv0Bn', 'Eleveur Test',   'testprofessionnel5@gmail.com',  1, 'user', NULL, 'professionnel', 'Eleveur', 'Test',   '2026-04-23 09:18:07', '2026-04-23 09:18:15'),
-('Mi2No6Pq0Rs4Tu8Vw1Xy5Za9Bc3De7Fg', 'Boulanger Test', 'testprofessionnel6@gmail.com',  1, 'user', NULL, 'professionnel', 'Boulanger', 'Test', '2026-04-23 09:18:07', '2026-04-23 09:18:15'),
-('Gh8Jk2Lm6Np0Qr4St9Uv3Wx7Yz1Ab5Cd', 'Brasseur Test',  'testprofessionnel7@gmail.com',  1, 'user', NULL, 'professionnel', 'Brasseur', 'Test',  '2026-04-23 09:18:07', '2026-04-23 09:18:15');
+('Zd4kfip6or78ukt2lHV5BObQGUJ0h4Kl', 'Maëlle Riou',       'testparticulier1@gmail.com',   1, 'user', NULL, 'particulier',   'Maëlle',      'Riou',      '2026-04-23 09:02:41', '2026-04-23 09:03:03'),
+('YGrii7v7iKcdvjXEznpuus97uVFcjugJ', 'Gwenn Le Berre',    'testprofessionnel1@gmail.com', 1, 'user', NULL, 'professionnel', 'Gwenn',       'Le Berre',  '2026-04-23 09:18:07', '2026-04-23 09:18:15'),
+('Qp7Hn2Lm9Xc4Vb1Ts8Kd5Rj3Wy6Uf0Za', 'Yann Kervella',   'testprofessionnel2@gmail.com', 1, 'user', NULL, 'professionnel', 'Yann',        'Kervella',  '2026-04-23 09:18:07', '2026-04-23 09:18:15'),
+('Bn4Rt8Yp1Lk6Jm3Nh0Vf5Dc2Xs9Qa7We', 'Nolwenn Tanguy',  'testprofessionnel3@gmail.com', 1, 'user', NULL, 'professionnel', 'Nolwenn',     'Tanguy',    '2026-04-23 09:18:07', '2026-04-23 09:18:15'),
+('Hu3Ji7Ko1Lp9Mn5Bv2Cx8Dz4Sr6Ta0Ye', 'Mikael Le Goff',  'testprofessionnel4@gmail.com', 1, 'user', NULL, 'professionnel', 'Mikael',      'Le Goff',   '2026-04-23 09:18:07', '2026-04-23 09:18:15'),
+('Te5Yu1Io9Pa3Sd7Fg2Hj6Kl8Zx4Cv0Bn', 'Erwan Cadiou',    'testprofessionnel5@gmail.com', 1, 'user', NULL, 'professionnel', 'Erwan',       'Cadiou',    '2026-04-23 09:18:07', '2026-04-23 09:18:15'),
+('Mi2No6Pq0Rs4Tu8Vw1Xy5Za9Bc3De7Fg', 'Anne-Marie Guéguen','testprofessionnel6@gmail.com',1, 'user', NULL, 'professionnel', 'Anne-Marie',  'Guéguen',   '2026-04-23 09:18:07', '2026-04-23 09:18:15'),
+('Gh8Jk2Lm6Np0Qr4St9Uv3Wx7Yz1Ab5Cd', 'Loïc Prigent',   'testprofessionnel7@gmail.com', 1, 'user', NULL, 'professionnel', 'Loïc',        'Prigent',   '2026-04-23 09:18:07', '2026-04-23 09:18:15');
 
 -- Better Auth : comptes (mots de passe hashés)
 INSERT INTO `account` (`id`, `accountId`, `providerId`, `userId`, `accessToken`, `refreshToken`, `idToken`, `accessTokenExpiresAt`, `refreshTokenExpiresAt`, `scope`, `password`, `createdAt`, `updatedAt`) VALUES
@@ -784,21 +795,16 @@ INSERT INTO `account` (`id`, `accountId`, `providerId`, `userId`, `accessToken`,
 ('Ss9Tt8Uu7Vv6Ww5Xx4Yy3Zz2Aa1Bb0Cc', 'Mi2No6Pq0Rs4Tu8Vw1Xy5Za9Bc3De7Fg', 'credential', 'Mi2No6Pq0Rs4Tu8Vw1Xy5Za9Bc3De7Fg', NULL, NULL, NULL, NULL, NULL, NULL, 'f6dc03a5329dc37db121c5781fc3194d:4788b30804eff32e996c751595ba68f13fc4671a7a4a6b83c7ea8ec2989a0e68642d9e1fc8f3a143c5761871b698a4eda234533c2096ea4388c01ccfccd17388', '2026-04-23 09:18:07', '2026-04-23 09:18:07'),
 ('Dd1Ee2Ff3Gg4Hh5Ii6Jj7Kk8Ll9Mm0Nn', 'Gh8Jk2Lm6Np0Qr4St9Uv3Wx7Yz1Ab5Cd', 'credential', 'Gh8Jk2Lm6Np0Qr4St9Uv3Wx7Yz1Ab5Cd', NULL, NULL, NULL, NULL, NULL, NULL, 'f6dc03a5329dc37db121c5781fc3194d:4788b30804eff32e996c751595ba68f13fc4671a7a4a6b83c7ea8ec2989a0e68642d9e1fc8f3a143c5761871b698a4eda234533c2096ea4388c01ccfccd17388', '2026-04-23 09:18:07', '2026-04-23 09:18:07');
 
--- Better Auth : sessions
-INSERT INTO `session` (`id`, `expiresAt`, `token`, `createdAt`, `updatedAt`, `ipAddress`, `userAgent`, `userId`) VALUES
-('6VjT3UPy9HhQKXYfKI6jR4pFSRMT2QRh', '2026-04-30 09:03:03', 'snBXhxKZrAU9Ws0zi6Yt2Aq3HDzCDooj', '2026-04-23 09:03:03', '2026-04-23 09:03:03', '', 'Mozilla/5.0 (X11; Linux x86_64; rv:149.0) Gecko/20100101 Firefox/149.0', 'Zd4kfip6or78ukt2lHV5BObQGUJ0h4Kl'),
-('sLKxmBxWuo5GRgp9okLcqaSXZyG8KGyU', '2026-04-30 09:18:15', 'EXs1YfDSLqOzvUtRITgDTh82DR8sqGvB', '2026-04-23 09:18:15', '2026-04-23 09:18:15', '', 'Mozilla/5.0 (X11; Linux x86_64; rv:149.0) Gecko/20100101 Firefox/149.0', 'YGrii7v7iKcdvjXEznpuus97uVFcjugJ');
-
 -- Utilisateurs métier
 INSERT INTO `Utilisateur` (`id`, `type_utilisateur`, `nom`, `prenom`, `email`, `num_telephone`, `adresse_ligne`, `code_postal`, `ville`, `idAdmin`) VALUES
-(1, 'particulier',   'Test', 'Testeur', 'testparticulier1@gmail.com',            NULL, NULL, NULL, NULL, NULL),
-(2, 'professionnel', 'Test', 'Vendeur',   'testprofessionnel1@gmail.com', NULL, NULL, NULL, NULL, NULL),
-(3, 'professionnel', 'Test', 'Maraicher', 'testprofessionnel2@gmail.com', NULL, NULL, NULL, NULL, NULL),
-(4, 'professionnel', 'Test', 'Primeur',   'testprofessionnel3@gmail.com', NULL, NULL, NULL, NULL, NULL),
-(5, 'professionnel', 'Test', 'Artisan',   'testprofessionnel4@gmail.com', NULL, NULL, NULL, NULL, NULL),
-(6, 'professionnel', 'Test', 'Eleveur',   'testprofessionnel5@gmail.com', NULL, NULL, NULL, NULL, NULL),
-(7, 'professionnel', 'Test', 'Boulanger', 'testprofessionnel6@gmail.com', NULL, NULL, NULL, NULL, NULL),
-(8, 'professionnel', 'Test', 'Brasseur',  'testprofessionnel7@gmail.com', NULL, NULL, NULL, NULL, NULL);
+(1, 'particulier',   'Riou',     'Maëlle',      'testparticulier1@gmail.com',   '0296370045', '15 rue de la Trinité',         '22300', 'Lannion', NULL),
+(2, 'professionnel', 'Le Berre', 'Gwenn',       'testprofessionnel1@gmail.com', '0296481203', '1 place du Général Leclerc',   '22300', 'Lannion', NULL),
+(3, 'professionnel', 'Kervella', 'Yann',        'testprofessionnel2@gmail.com', '0296484521', '12 rue des Hortensias',        '22300', 'Lannion', NULL),
+(4, 'professionnel', 'Tanguy',   'Nolwenn',     'testprofessionnel3@gmail.com', '0296376892', '8 quai d\'Aiguillon',          '22300', 'Lannion', NULL),
+(5, 'professionnel', 'Le Goff',  'Mikael',      'testprofessionnel4@gmail.com', '0296370167', '5 rue Jean Savidan',           '22300', 'Lannion', NULL),
+(6, 'professionnel', 'Cadiou',   'Erwan',       'testprofessionnel5@gmail.com', '0296482314', '21 route de Trébeurden',       '22300', 'Lannion', NULL),
+(7, 'professionnel', 'Guéguen',  'Anne-Marie',  'testprofessionnel6@gmail.com', '0296375698', '4 rue Saint-Marc',             '22300', 'Lannion', NULL),
+(8, 'professionnel', 'Prigent',  'Loïc',        'testprofessionnel7@gmail.com', '0296483701', '16 avenue de Park Nevez',      '22300', 'Lannion', NULL);
 
 -- Particulier
 INSERT INTO `Particulier` (`idParticulier`, `id`, `pointsFidelite`) VALUES (1, 1, 0);
@@ -855,12 +861,6 @@ INSERT INTO `AuthProfile` (`authUserId`, `accountType`, `particulierId`, `profes
 ('Mi2No6Pq0Rs4Tu8Vw1Xy5Za9Bc3De7Fg', 'professionnel', NULL,  6,    6,    '2026-04-23 11:18:07', '2026-04-23 11:18:07'),
 ('Gh8Jk2Lm6Np0Qr4St9Uv3Wx7Yz1Ab5Cd', 'professionnel', NULL,  7,    7,    '2026-04-23 11:18:07', '2026-04-23 11:18:07');
 
--- Paniers
-INSERT INTO `Panier` (`idPanier`, `nom`, `estLivrable`, `idParticulier`, `idProfessionnel`) VALUES
-(1, 'Panier de Testeur',    1, 1,    NULL),
-(2, 'Panier de Testeur',    1, 1,    NULL),
-(3, 'Panier pro de Vendeur', 0, NULL, 1);
-
 -- Points Relais
 INSERT INTO `PointRelais` (`nom`, `adresse_ligne`, `code_postal`, `ville`) VALUES
 ('La Poste de Lannion',             'Quai d\'Aiguillon',                    '22300', 'Lannion'),
@@ -870,22 +870,198 @@ INSERT INTO `PointRelais` (`nom`, `adresse_ligne`, `code_postal`, `ville`) VALUE
 ('Consigne Pickup Weldom Lannion',  '38 rue Saint-Marc',                    '22300', 'Lannion');
 
 -- Lieux de Vente
-INSERT INTO `LieuVente` (`nom`, `horaires`, `adresse_ligne`, `code_postal`, `ville`) VALUES
-('Les Halles de Lannion',          'Mar-Sam 8h-13h',          'Place du Miroir',                              '22300', 'Lannion'),
-('Marché de la Mutante',           'Mer 16h-19h',             'Manoir de Trorozec, 8 Rue de Trorozec',        '22300', 'Lannion'),
-('Ferme de Keranod',               'Mar-Ven 16h30-18h30',     '102 Ker an Nod',                               '22300', 'Lannion'),
-('Au Potager de Kervoigen',        'Ven-Sam 9h-12h',          'Chemin de Kervoigen',                          '22300', 'Lannion'),
-('Bergerie de Kroaz Min',          'Mer-Ven 15h-18h',         'Servel',                                       '22300', 'Lannion'),
-('Ferme du Wern',                  'Mar 16h-19h',             'Le Launay',                                    '22300', 'Ploubezre'),
-('La Ferme Bio de Kernéan',        'Ven 17h-19h',             '6 Route de Kernéan',                           '22560', 'Pleumeur-Bodou'),
-('Brasstillerie KanArFoll',        'Mer 16h-19h',             'Pôle Phoenix, Bat B',                          '22560', 'Pleumeur-Bodou'),
-('La Fabrique du Potager',         'Sam 9h30-12h30',          '78 rue de Kernevez',                           '22560', 'Trébeurden'),
-('Ferme du Lanno',                 'Mar-Sam 9h-12h',          '2 Place du Kroajou',                           '22660', 'Trélévern'),
-('Dolmen & Potager',               'Mar 15h-18h, Ven 16h-19h','Ferme de Coat Mez',                            '22660', 'Trévou-Tréguignec'),
-('La ferme végétale de Boiséon',   'Mar-Ven 16h-19h',         '3 Bois Yvon',                                  '22710', 'Penvénan'),
-('La Ferme des Hautes Terres',     'Mar 17h30-19h',           '5 Kercadieu, route de Pors Hir',               '22820', 'Plougrescant'),
-('La Ferme de Keredern',           'Ven 9h-12h, Sam 9h-12h', '14 Lieu-dit Keredern',                         '22220', 'Trédarzec'),
-('Bernard Fay Légumes',            'Lun-Sam 9h-12h30',        '54 rue de la Presqu\'île, Bourg de l\'Armor',  '22610', 'Pleubian');
+INSERT INTO `LieuVente` (`nom`, `horaires`, `adresse_ligne`, `code_postal`, `ville`, `latitude`, `longitude`) VALUES
+('Les Halles de Lannion',          'Mar-Sam 8h-13h',          'Place du Miroir',                              '22300', 'Lannion',           48.731900, -3.457900),
+('Marché de la Mutante',           'Mer 16h-19h',             'Manoir de Trorozec, 8 Rue de Trorozec',        '22300', 'Lannion',           48.727400, -3.448900),
+('Ferme de Keranod',               'Mar-Ven 16h30-18h30',     '102 Ker an Nod',                               '22300', 'Lannion',           48.735100, -3.474300),
+('Au Potager de Kervoigen',        'Ven-Sam 9h-12h',          'Chemin de Kervoigen',                          '22300', 'Lannion',           48.748200, -3.468100),
+('Bergerie de Kroaz Min',          'Mer-Ven 15h-18h',         'Servel',                                       '22300', 'Lannion',           48.744400, -3.444800),
+('Ferme du Wern',                  'Mar 16h-19h',             'Le Launay',                                    '22300', 'Ploubezre',         48.705700, -3.448400),
+('La Ferme Bio de Kernéan',        'Ven 17h-19h',             '6 Route de Kernéan',                           '22560', 'Pleumeur-Bodou',    48.773100, -3.518700),
+('Brasstillerie KanArFoll',        'Mer 16h-19h',             'Pôle Phoenix, Bat B',                          '22560', 'Pleumeur-Bodou',    48.781400, -3.516500),
+('La Fabrique du Potager',         'Sam 9h30-12h30',          '78 rue de Kernevez',                           '22560', 'Trébeurden',        48.769900, -3.559400),
+('Ferme du Lanno',                 'Mar-Sam 9h-12h',          '2 Place du Kroajou',                           '22660', 'Trélévern',         48.808600, -3.368100),
+('Dolmen & Potager',               'Mar 15h-18h, Ven 16h-19h','Ferme de Coat Mez',                            '22660', 'Trévou-Tréguignec', 48.818500, -3.358600),
+('La ferme végétale de Boiséon',   'Mar-Ven 16h-19h',         '3 Bois Yvon',                                  '22710', 'Penvénan',          48.811400, -3.300100),
+('La Ferme des Hautes Terres',     'Mar 17h30-19h',           '5 Kercadieu, route de Pors Hir',               '22820', 'Plougrescant',      48.868200, -3.224300),
+('La Ferme de Keredern',           'Ven 9h-12h, Sam 9h-12h', '14 Lieu-dit Keredern',                         '22220', 'Trédarzec',         48.786700, -3.201900),
+('Bernard Fay Légumes',            'Lun-Sam 9h-12h30',        '54 rue de la Presqu\'île, Bourg de l\'Armor',  '22610', 'Pleubian',          48.846200, -3.138700);
+
+-- Images produits (une par produit, même ordre que les Produits ci-dessous)
+INSERT INTO `Image` (`idImage`, `path`) VALUES
+-- Pro 1 – Gwenn Le Berre (Les fruits de mamie + Conserverie du Trégor)
+( 1, '/images/produits/pommes_reinette.webp'),
+( 2, '/images/produits/poires_williams.webp'),
+( 3, '/images/produits/fraises_gariguette.webp'),
+( 4, '/images/produits/framboises.webp'),
+( 5, '/images/produits/confiture_fraises.webp'),
+( 6, '/images/produits/confiture_mures.webp'),
+( 7, '/images/produits/gelee_pommes.webp'),
+( 8, '/images/produits/compote_pommes.webp'),
+-- Pro 2 – Yann Kervella (Le potager des brumes)
+( 9, '/images/produits/tomates_coeur_boeuf.webp'),
+(10, '/images/produits/courgettes.webp'),
+(11, '/images/produits/carottes.webp'),
+(12, '/images/produits/salade_batavia.webp'),
+(13, '/images/produits/poireaux.webp'),
+(14, '/images/produits/epinards.webp'),
+(15, '/images/produits/haricots_verts.webp'),
+(16, '/images/produits/betteraves_rouges.webp'),
+-- Pro 3 – Nolwenn Tanguy (Primeurs de la baie)
+(17, '/images/produits/pommes_de_terre.webp'),
+(18, '/images/produits/oignons_jaunes.webp'),
+(19, '/images/produits/artichauts.webp'),
+(20, '/images/produits/chou_fleur.webp'),
+(21, '/images/produits/brocoli.webp'),
+(22, '/images/produits/endives.webp'),
+(23, '/images/produits/tomates_cerises.webp'),
+(24, '/images/produits/ail_rose.webp'),
+-- Pro 4 – Mikael Le Goff (Atelier des terroirs)
+(25, '/images/produits/miel_bretagne.webp'),
+(26, '/images/produits/caramel_beurre_sale.webp'),
+(27, '/images/produits/cidre_brut.webp'),
+(28, '/images/produits/vinaigre_cidre.webp'),
+(29, '/images/produits/huile_colza.webp'),
+(30, '/images/produits/galettes_bretonnes.webp'),
+(31, '/images/produits/sables_bretons.webp'),
+(32, '/images/produits/kouign_amann_artisan.webp'),
+-- Pro 5 – Erwan Cadiou (Elevage de Kermaria)
+(33, '/images/produits/cotes_agneau.webp'),
+(34, '/images/produits/gigot_agneau.webp'),
+(35, '/images/produits/saucisses_porc.webp'),
+(36, '/images/produits/lardons_fumes.webp'),
+(37, '/images/produits/fromage_brebis.webp'),
+(38, '/images/produits/lait_entier.webp'),
+(39, '/images/produits/beurre_demi_sel.webp'),
+(40, '/images/produits/yaourts_nature.webp'),
+-- Pro 6 – Anne-Marie Guéguen (Le fournil granit rose)
+(41, '/images/produits/pain_campagne.webp'),
+(42, '/images/produits/baguette_tradition.webp'),
+(43, '/images/produits/pain_levain.webp'),
+(44, '/images/produits/kouign_amann_fournil.webp'),
+(45, '/images/produits/far_breton.webp'),
+(46, '/images/produits/crepes_bretonnes.webp'),
+(47, '/images/produits/pain_cereales.webp'),
+(48, '/images/produits/brioche_tressee.webp'),
+-- Pro 7 – Loïc Prigent (Brasserie des embruns)
+(49, '/images/produits/biere_blonde.webp'),
+(50, '/images/produits/biere_ambree.webp'),
+(51, '/images/produits/biere_brune.webp'),
+(52, '/images/produits/biere_blanche.webp'),
+(53, '/images/produits/biere_ipa.webp'),
+(54, '/images/produits/pack_6_blondes.webp'),
+(55, '/images/produits/pack_6_assorties.webp'),
+(56, '/images/produits/biere_saison.webp');
+
+-- Produits
+--   unitaireOuKilo : TRUE = à l'unité, FALSE = au kilo
+INSERT INTO `Produit` (`idProduit`, `idProfessionnel`, `idEntreprise`, `nom`, `nature`, `unitaireOuKilo`, `bio`, `prix`, `tva`, `reductionProfessionnel`, `stock`, `visible`) VALUES
+-- Pro 1 – Gwenn Le Berre
+( 1, 1, 1, 'Pommes Reinette',          'Fruit',       FALSE, FALSE,  2.50,  5.50,  0.00,  80.000, TRUE),
+( 2, 1, 1, 'Poires Williams',          'Fruit',       FALSE, FALSE,  2.80,  5.50,  0.00,  45.000, TRUE),
+( 3, 1, 1, 'Fraises Gariguette',       'Fruit',       FALSE, FALSE,  6.50,  5.50,  0.00,  20.000, TRUE),
+( 4, 1, 1, 'Framboises',               'Fruit',       FALSE,  TRUE,  9.00,  5.50,  0.00,   8.000, TRUE),
+( 5, 1, 8, 'Confiture de fraises',     'Autre',        TRUE, FALSE,  4.80,  5.50,  0.00,  35.000, TRUE),
+( 6, 1, 8, 'Confiture de mûres',       'Autre',        TRUE, FALSE,  4.80,  5.50,  0.00,  28.000, TRUE),
+( 7, 1, 8, 'Gelée de pommes',          'Autre',        TRUE, FALSE,  4.20,  5.50,  0.00,  40.000, TRUE),
+( 8, 1, 8, 'Compote de pommes maison', 'Autre',        TRUE, FALSE,  3.50,  5.50,  0.00,  50.000, TRUE),
+-- Pro 2 – Yann Kervella
+( 9, 2, 2, 'Tomates cœur de bœuf',    'Légume',      FALSE,  TRUE,  4.20,  5.50,  0.00,  30.000, TRUE),
+(10, 2, 2, 'Courgettes',               'Légume',      FALSE,  TRUE,  2.20,  5.50,  0.00,  60.000, TRUE),
+(11, 2, 2, 'Carottes',                 'Légume',      FALSE, FALSE,  1.80,  5.50, 10.00, 100.000, TRUE),
+(12, 2, 2, 'Salade batavia',           'Légume',       TRUE, FALSE,  1.20,  5.50,  0.00,  25.000, TRUE),
+(13, 2, 2, 'Poireaux',                 'Légume',      FALSE, FALSE,  2.80,  5.50,  0.00,  40.000, TRUE),
+(14, 2, 2, 'Épinards',                 'Légume',      FALSE,  TRUE,  4.50,  5.50,  0.00,  15.000, TRUE),
+(15, 2, 2, 'Haricots verts',           'Légume',      FALSE, FALSE,  4.80,  5.50,  0.00,  20.000, TRUE),
+(16, 2, 2, 'Betteraves rouges',        'Légume',      FALSE, FALSE,  2.00,  5.50,  0.00,  50.000, TRUE),
+-- Pro 3 – Nolwenn Tanguy
+(17, 3, 3, 'Pommes de terre Charlotte','Légume',      FALSE, FALSE,  1.60,  5.50, 10.00, 200.000, TRUE),
+(18, 3, 3, 'Oignons jaunes',           'Légume',      FALSE, FALSE,  1.80,  5.50, 10.00,  80.000, TRUE),
+(19, 3, 3, 'Artichauts',               'Légume',       TRUE, FALSE,  1.50,  5.50,  0.00,  30.000, TRUE),
+(20, 3, 3, 'Chou-fleur',               'Légume',       TRUE, FALSE,  2.50,  5.50,  0.00,  20.000, TRUE),
+(21, 3, 3, 'Brocoli',                  'Légume',       TRUE, FALSE,  2.20,  5.50,  0.00,  15.000, TRUE),
+(22, 3, 3, 'Endives',                  'Légume',      FALSE, FALSE,  3.20,  5.50,  0.00,  35.000, TRUE),
+(23, 3, 3, 'Tomates cerises',          'Fruit',       FALSE, FALSE,  5.50,  5.50,  0.00,  18.000, TRUE),
+(24, 3, 3, 'Ail rose',                 'Légume',       TRUE, FALSE,  1.50,  5.50,  0.00,  40.000, TRUE),
+-- Pro 4 – Mikael Le Goff
+(25, 4, 4, 'Miel de Bretagne',         'Autre',        TRUE, FALSE,  9.50,  5.50,  0.00,  30.000, TRUE),
+(26, 4, 4, 'Caramel au beurre salé',   'Autre',        TRUE, FALSE,  4.20,  5.50,  0.00,  45.000, TRUE),
+(27, 4, 4, 'Cidre brut artisanal',     'Autre',        TRUE, FALSE,  4.80, 20.00,  5.00,  60.000, TRUE),
+(28, 4, 4, 'Vinaigre de cidre',        'Autre',        TRUE, FALSE,  5.50,  5.50,  0.00,  25.000, TRUE),
+(29, 4, 4, 'Huile de colza artisanale','Autre',        TRUE, FALSE,  7.00,  5.50,  0.00,  20.000, TRUE),
+(30, 4, 4, 'Galettes bretonnes pur beurre','Boulangerie',TRUE,FALSE, 4.50,  5.50,  0.00,  40.000, TRUE),
+(31, 4, 4, 'Sablés bretons',           'Boulangerie',  TRUE, FALSE,  3.80,  5.50,  0.00,  35.000, TRUE),
+(32, 4, 4, 'Kouign-amann',             'Boulangerie',  TRUE, FALSE,  8.50,  5.50,  0.00,  12.000, TRUE),
+-- Pro 5 – Erwan Cadiou
+(33, 5, 5, 'Côtelettes d\'agneau',     'Viande',      FALSE, FALSE, 22.00,  5.50,  0.00,  15.000, TRUE),
+(34, 5, 5, 'Gigot d\'agneau',          'Viande',      FALSE, FALSE, 18.00,  5.50,  0.00,   8.000, TRUE),
+(35, 5, 5, 'Saucisses de porc',        'Viande',      FALSE, FALSE,  9.50,  5.50,  0.00,  25.000, TRUE),
+(36, 5, 5, 'Lardons fumés',            'Viande',      FALSE, FALSE, 10.00,  5.50,  0.00,  20.000, TRUE),
+(37, 5, 5, 'Fromage de brebis',        'Laitier',      TRUE, FALSE,  6.50,  5.50,  0.00,  15.000, TRUE),
+(38, 5, 5, 'Lait entier cru',          'Laitier',      TRUE, FALSE,  1.20,  5.50,  0.00,  40.000, TRUE),
+(39, 5, 5, 'Beurre demi-sel',          'Laitier',      TRUE, FALSE,  3.80,  5.50,  0.00,  30.000, TRUE),
+(40, 5, 5, 'Yaourts nature (pack 4)',  'Laitier',      TRUE, FALSE,  3.50,  5.50,  0.00,  20.000, TRUE),
+-- Pro 6 – Anne-Marie Guéguen
+(41, 6, 6, 'Pain de campagne',         'Boulangerie',  TRUE, FALSE,  4.50,  5.50,  0.00,  20.000, TRUE),
+(42, 6, 6, 'Baguette tradition',       'Boulangerie',  TRUE, FALSE,  1.30,  5.50,  0.00,  30.000, TRUE),
+(43, 6, 6, 'Pain au levain',           'Boulangerie',  TRUE, FALSE,  5.80,  5.50,  0.00,  15.000, TRUE),
+(44, 6, 6, 'Kouign-amann',             'Boulangerie',  TRUE, FALSE,  9.00,  5.50,  0.00,  10.000, TRUE),
+(45, 6, 6, 'Far breton',               'Boulangerie',  TRUE, FALSE,  6.50,  5.50,  0.00,  12.000, TRUE),
+(46, 6, 6, 'Crêpes bretonnes (pack 6)','Boulangerie',  TRUE, FALSE,  3.80,  5.50,  0.00,  25.000, TRUE),
+(47, 6, 6, 'Pain aux céréales',        'Boulangerie',  TRUE, FALSE,  5.20,  5.50,  0.00,  15.000, TRUE),
+(48, 6, 6, 'Brioche tressée',          'Boulangerie',  TRUE, FALSE,  5.50,  5.50,  0.00,  10.000, TRUE),
+-- Pro 7 – Loïc Prigent
+(49, 7, 7, 'Bière blonde artisanale',  'Autre',        TRUE, FALSE,  3.50, 20.00,  5.00, 100.000, TRUE),
+(50, 7, 7, 'Bière ambrée artisanale',  'Autre',        TRUE, FALSE,  3.80, 20.00,  5.00,  80.000, TRUE),
+(51, 7, 7, 'Bière brune artisanale',   'Autre',        TRUE, FALSE,  4.00, 20.00,  5.00,  70.000, TRUE),
+(52, 7, 7, 'Bière blanche artisanale', 'Autre',        TRUE, FALSE,  3.50, 20.00,  5.00,  90.000, TRUE),
+(53, 7, 7, 'Bière IPA artisanale',     'Autre',        TRUE, FALSE,  4.50, 20.00,  5.00,  60.000, TRUE),
+(54, 7, 7, 'Pack 6 bières blondes',    'Autre',        TRUE, FALSE, 18.00, 20.00,  5.00,  40.000, TRUE),
+(55, 7, 7, 'Pack 6 bières assorties',  'Autre',        TRUE, FALSE, 20.00, 20.00,  5.00,  30.000, TRUE),
+(56, 7, 7, 'Bière de saison',          'Autre',        TRUE, FALSE,  4.20, 20.00,  5.00,  50.000, TRUE);
+
+-- Liens Produit <-> Image (un pour un, même ordre)
+INSERT INTO `Produit_Image` (`idProduit`, `idImage`) VALUES
+( 1, 1),( 2, 2),( 3, 3),( 4, 4),( 5, 5),( 6, 6),( 7, 7),( 8, 8),
+( 9, 9),(10,10),(11,11),(12,12),(13,13),(14,14),(15,15),(16,16),
+(17,17),(18,18),(19,19),(20,20),(21,21),(22,22),(23,23),(24,24),
+(25,25),(26,26),(27,27),(28,28),(29,29),(30,30),(31,31),(32,32),
+(33,33),(34,34),(35,35),(36,36),(37,37),(38,38),(39,39),(40,40),
+(41,41),(42,42),(43,43),(44,44),(45,45),(46,46),(47,47),(48,48),
+(49,49),(50,50),(51,51),(52,52),(53,53),(54,54),(55,55),(56,56);
+
+-- Liens Entreprise <-> LieuVente
+INSERT INTO `Entreprise_LieuVente` (`idEntreprise`, `idLieu`) VALUES
+-- Les Halles de Lannion (1) — marché couvert, toutes les entreprises présentes
+(1, 1), (2, 1), (3, 1), (4, 1), (5, 1), (6, 1), (7, 1), (8, 1),
+-- Marché de la Mutante (2) — marché de producteurs, quelques-uns
+(3, 2), (4, 2), (6, 2), (8, 2),
+-- Ferme de Keranod (3) — vente directe, une seule entreprise
+(2, 3),
+-- Au Potager de Kervoigen (4) — vente directe, une seule entreprise
+(3, 4),
+-- Bergerie de Kroaz Min (5) — vente directe, une seule entreprise
+(5, 5),
+-- Ferme du Wern (6) — vente directe, une seule entreprise
+(2, 6),
+-- La Ferme Bio de Kernéan (7) — vente directe, une seule entreprise
+(4, 7),
+-- Brasstillerie KanArFoll (8) — vente directe, une seule entreprise
+(7, 8),
+-- La Fabrique du Potager (9) — vente directe, une seule entreprise
+(3, 9),
+-- Ferme du Lanno (10) — vente directe, une seule entreprise
+(5, 10),
+-- Dolmen & Potager (11) — deux producteurs complémentaires
+(2, 11), (8, 11),
+-- La ferme végétale de Boiséon (12) — vente directe, une seule entreprise
+(2, 12),
+-- La Ferme des Hautes Terres (13) — vente directe, une seule entreprise
+(5, 13),
+-- La Ferme de Keredern (14) — vente directe, une seule entreprise
+(1, 14),
+-- Bernard Fay Légumes (15) — vente directe, une seule entreprise
+(3, 15);
 
 -- =============================================================
 --  FIN DU PEUPLEMENT

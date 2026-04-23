@@ -1,3 +1,5 @@
+import { computeOptimalPickupRoute } from './pickup-route-service.js';
+
 class CheckoutError extends Error {
 	constructor(status, message) {
 		super(message);
@@ -6,18 +8,41 @@ class CheckoutError extends Error {
 	}
 }
 
+const DELIVERY_FEES = {
+	domicile: 7.9,
+	point_relais: 3.9,
+	lieu_vente: 0
+};
+
+const PAYMENT_MODES = {
+	carte_bancaire: 'Carte bancaire',
+	paiement_livraison: 'Paiement à la livraison',
+	especes: 'Espèces'
+};
+
 function roundCurrency(value) {
 	return Number(Number(value || 0).toFixed(2));
 }
 
 function normalizeModeLivraison(value) {
 	if (typeof value !== 'string') return null;
-	const trimmed = value.trim();
-	return trimmed ? trimmed.slice(0, 100) : null;
+	const normalized = value.trim().slice(0, 100);
+	return Object.prototype.hasOwnProperty.call(DELIVERY_FEES, normalized) ? normalized : null;
+}
+
+function normalizeModePaiement(value) {
+	if (typeof value !== 'string') return 'carte_bancaire';
+	const normalized = value.trim().slice(0, 100);
+	return Object.prototype.hasOwnProperty.call(PAYMENT_MODES, normalized) ? normalized : null;
 }
 
 function parseVoucherId(value) {
 	if (value == null || value === '') return null;
+	const parsed = Number(value);
+	return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+function parsePositiveInteger(value) {
 	const parsed = Number(value);
 	return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 }
@@ -72,10 +97,527 @@ function computeLineTotal(item) {
 	return roundCurrency(quantity * unitPriceTtc);
 }
 
+function normalizePickupAssignments(value) {
+	if (Array.isArray(value)) {
+		return value
+			.map((assignment) => ({
+				idProduit: parsePositiveInteger(assignment?.idProduit),
+				idLieu: parsePositiveInteger(assignment?.idLieu)
+			}))
+			.filter((assignment) => assignment.idProduit && assignment.idLieu);
+	}
+
+	if (value && typeof value === 'object') {
+		return Object.entries(value)
+			.map(([idProduit, idLieu]) => ({
+				idProduit: parsePositiveInteger(idProduit),
+				idLieu: parsePositiveInteger(idLieu)
+			}))
+			.filter((assignment) => assignment.idProduit && assignment.idLieu);
+	}
+
+	return [];
+}
+
+function formatAddress(address) {
+	if (!address) return null;
+	const line = String(address.adresse_ligne || '').trim();
+	const postalCode = String(address.code_postal || '').trim();
+	const city = String(address.ville || '').trim();
+	if (!line || !postalCode || !city) return null;
+	return {
+		adresse_ligne: line,
+		code_postal: postalCode,
+		ville: city,
+		label: `${line}, ${postalCode} ${city}`
+	};
+}
+
+function mapRelayRow(row) {
+	return {
+		idRelais: Number(row.idRelais),
+		nom: row.nom,
+		adresse: {
+			ligne: row.adresse_ligne,
+			codePostal: row.code_postal,
+			ville: row.ville
+		}
+	};
+}
+
+function mapSalesPointRow(row) {
+	return {
+		idLieu: Number(row.idLieu),
+		nom: row.nom,
+		horaires: row.horaires,
+		adresse: {
+			ligne: row.adresse_ligne,
+			codePostal: row.code_postal,
+			ville: row.ville
+		},
+		coordinates: {
+			latitude: Number(row.latitude),
+			longitude: Number(row.longitude)
+		}
+	};
+}
+
+function buildAssignmentMap(assignments) {
+	return new Map(assignments.map((assignment) => [assignment.idProduit, assignment.idLieu]));
+}
+
+async function loadCurrentCartWithItems(conn, owner) {
+	const [cartRows] = await conn.query(
+		`SELECT *
+		 FROM Panier
+		 WHERE ${owner.column} = ?
+		 LIMIT 1
+		 FOR UPDATE`,
+		[owner.id]
+	);
+
+	const cart = cartRows[0];
+	if (!cart) {
+		throw new CheckoutError(409, 'Aucun panier a valider.');
+	}
+
+	const [itemRows] = await conn.query(
+		`SELECT
+			pp.idPanier,
+			pp.idProduit,
+			pp.quantite,
+			p.nom,
+			p.prix,
+			p.tva,
+			p.reductionProfessionnel,
+			p.stock,
+			p.unitaireOuKilo,
+			p.visible
+		 FROM Panier_Produit pp
+		 JOIN Produit p ON p.idProduit = pp.idProduit
+		 WHERE pp.idPanier = ?
+		 FOR UPDATE`,
+		[cart.idPanier]
+	);
+
+	if (!itemRows.length) {
+		throw new CheckoutError(409, 'Le panier est vide.');
+	}
+
+	const items = itemRows.map((item) => {
+		validateCartLine(item);
+		return {
+			...item,
+			lineTotalTtc: computeLineTotal(item)
+		};
+	});
+
+	return { cart, items };
+}
+
+async function loadRelayOptions(conn) {
+	const [rows] = await conn.query(
+		`SELECT idRelais, nom, adresse_ligne, code_postal, ville
+		 FROM PointRelais
+		 ORDER BY nom ASC, idRelais ASC`
+	);
+
+	return rows.map(mapRelayRow);
+}
+
+async function loadPickupAvailability(conn, cartId) {
+	const [rows] = await conn.query(
+		`SELECT DISTINCT
+			pp.idProduit,
+			lv.idLieu,
+			lv.nom,
+			lv.horaires,
+			lv.adresse_ligne,
+			lv.code_postal,
+			lv.ville,
+			lv.latitude,
+			lv.longitude
+		 FROM Panier_Produit pp
+		 JOIN Produit p ON p.idProduit = pp.idProduit
+		 JOIN Professionnel_Entreprise pe ON pe.idProfessionnel = p.idProfessionnel
+		 JOIN Entreprise_LieuVente elv ON elv.idEntreprise = pe.idEntreprise
+		 JOIN LieuVente lv ON lv.idLieu = elv.idLieu
+		 WHERE pp.idPanier = ?
+		   AND p.visible = TRUE
+		 ORDER BY lv.nom ASC, lv.idLieu ASC`,
+		[cartId]
+	);
+
+	return rows;
+}
+
+function buildItemPickupOptions(items, availabilityRows) {
+	const optionsByProduct = new Map();
+	for (const row of availabilityRows) {
+		const productId = Number(row.idProduit);
+		if (!optionsByProduct.has(productId)) {
+			optionsByProduct.set(productId, []);
+		}
+
+		const salesPoint = mapSalesPointRow(row);
+		const currentOptions = optionsByProduct.get(productId);
+		if (!currentOptions.some((option) => option.idLieu === salesPoint.idLieu)) {
+			currentOptions.push(salesPoint);
+		}
+	}
+
+	return items.map((item) => ({
+		idProduit: Number(item.idProduit),
+		nom: item.nom,
+		quantite: Number(item.quantite),
+		prixTTC: item.lineTotalTtc,
+		availablePickupPoints: optionsByProduct.get(Number(item.idProduit)) || []
+	}));
+}
+
+function buildUniquePickupPoints(itemPickupOptions) {
+	const salesPoints = new Map();
+	itemPickupOptions.forEach((item) => {
+		item.availablePickupPoints.forEach((salesPoint) => {
+			if (!salesPoints.has(salesPoint.idLieu)) {
+				salesPoints.set(salesPoint.idLieu, {
+					...salesPoint,
+					productIds: [],
+					productNames: []
+				});
+			}
+
+			const target = salesPoints.get(salesPoint.idLieu);
+			if (!target.productIds.includes(item.idProduit)) {
+				target.productIds.push(item.idProduit);
+				target.productNames.push(item.nom);
+			}
+		});
+	});
+
+	return [...salesPoints.values()];
+}
+
+function buildRecommendedPickupAssignments(itemPickupOptions) {
+	const coverage = buildUniquePickupPoints(itemPickupOptions);
+	const uncoveredProducts = new Set(itemPickupOptions.map((item) => item.idProduit));
+	const assignments = [];
+
+	for (const salesPoint of coverage) {
+		const matchingItems = itemPickupOptions.filter((item) => (
+			uncoveredProducts.has(item.idProduit)
+			&& item.availablePickupPoints.some((option) => option.idLieu === salesPoint.idLieu)
+		));
+
+		if (!matchingItems.length) continue;
+
+		matchingItems.forEach((item) => {
+			uncoveredProducts.delete(item.idProduit);
+			assignments.push({
+				idProduit: item.idProduit,
+				idLieu: salesPoint.idLieu
+			});
+		});
+	}
+
+	return assignments;
+}
+
+function buildPickupSelection(itemPickupOptions, rawAssignments) {
+	const assignments = normalizePickupAssignments(rawAssignments);
+	const assignmentMap = buildAssignmentMap(assignments);
+	const missingItems = [];
+	const invalidAssignments = [];
+	const selectedStopsMap = new Map();
+	const lineAssignments = [];
+
+	for (const item of itemPickupOptions) {
+		const assignedLieuId = assignmentMap.get(item.idProduit);
+		if (!assignedLieuId) {
+			missingItems.push({ idProduit: item.idProduit, nom: item.nom });
+			continue;
+		}
+
+		const selectedPoint = item.availablePickupPoints.find((option) => option.idLieu === assignedLieuId);
+		if (!selectedPoint) {
+			invalidAssignments.push({ idProduit: item.idProduit, idLieu: assignedLieuId, nom: item.nom });
+			continue;
+		}
+
+		selectedStopsMap.set(selectedPoint.idLieu, selectedPoint);
+		lineAssignments.push({
+			idProduit: item.idProduit,
+			nom: item.nom,
+			quantite: item.quantite,
+			idLieu: selectedPoint.idLieu,
+			selectedLieu: selectedPoint
+		});
+	}
+
+	return {
+		assignments: lineAssignments,
+		missingItems,
+		invalidAssignments,
+		selectedStops: [...selectedStopsMap.values()]
+	};
+}
+
+function buildDeliverySelection({
+	modeLivraison,
+	profile,
+	relayOptions,
+	relayId,
+	itemPickupOptions,
+	pickupAssignments
+}) {
+	const normalizedModeLivraison = normalizeModeLivraison(modeLivraison);
+	if (!normalizedModeLivraison) {
+		throw new CheckoutError(400, 'Mode de livraison invalide.');
+	}
+
+	if (normalizedModeLivraison === 'domicile') {
+		const address = formatAddress(profile?.particulier || profile?.client || profile?.professionnel);
+		if (!address) {
+			throw new CheckoutError(409, 'Ajoutez d abord votre adresse personnelle pour la livraison a domicile.');
+		}
+
+		return {
+			modeLivraison: normalizedModeLivraison,
+			fraisLivraison: DELIVERY_FEES[normalizedModeLivraison],
+			deliveryRecord: {
+				modeLivraison: normalizedModeLivraison,
+				adresse: address.label,
+				idRelais: null,
+				idLieu: null
+			},
+			summary: {
+				type: 'domicile',
+				label: address.label,
+				address
+			},
+			pickupRoute: null,
+			itemAssignments: []
+		};
+	}
+
+	if (normalizedModeLivraison === 'point_relais') {
+		const normalizedRelayId = parsePositiveInteger(relayId);
+		if (!normalizedRelayId) {
+			throw new CheckoutError(400, 'Selectionnez un point relais.');
+		}
+
+		const relay = relayOptions.find((option) => option.idRelais === normalizedRelayId);
+		if (!relay) {
+			throw new CheckoutError(404, 'Point relais introuvable.');
+		}
+
+		return {
+			modeLivraison: normalizedModeLivraison,
+			fraisLivraison: DELIVERY_FEES[normalizedModeLivraison],
+			deliveryRecord: {
+				modeLivraison: normalizedModeLivraison,
+				adresse: null,
+				idRelais: relay.idRelais,
+				idLieu: null
+			},
+			summary: {
+				type: 'point_relais',
+				label: relay.nom,
+				relay
+			},
+			pickupRoute: null,
+			itemAssignments: []
+		};
+	}
+
+	const pickupSelection = buildPickupSelection(itemPickupOptions, pickupAssignments);
+	if (pickupSelection.missingItems.length) {
+		throw new CheckoutError(400, 'Choisissez un point de vente pour chaque produit.');
+	}
+
+	if (pickupSelection.invalidAssignments.length) {
+		throw new CheckoutError(409, 'Certains points de vente choisis ne correspondent pas aux produits du panier.');
+	}
+
+	const pickupRoute = computeOptimalPickupRoute(pickupSelection.selectedStops);
+
+	return {
+		modeLivraison: normalizedModeLivraison,
+		fraisLivraison: DELIVERY_FEES[normalizedModeLivraison],
+		deliveryRecord: null,
+		summary: {
+			type: 'lieu_vente',
+			label: `${pickupSelection.selectedStops.length} point(s) de vente`,
+			assignments: pickupSelection.assignments
+		},
+		pickupRoute,
+		itemAssignments: pickupSelection.assignments
+	};
+}
+
+export async function getCheckoutContext({
+	db,
+	owner,
+	profile
+}) {
+	const conn = await db.getConnection();
+
+	try {
+		const { cart, items } = await loadCurrentCartWithItems(conn, owner);
+		const relayOptions = await loadRelayOptions(conn);
+		const pickupAvailability = await loadPickupAvailability(conn, cart.idPanier);
+		const itemPickupOptions = buildItemPickupOptions(items, pickupAvailability);
+		const defaultPickupAssignments = buildRecommendedPickupAssignments(itemPickupOptions);
+
+		return {
+			cart: {
+				idPanier: cart.idPanier,
+				itemsCount: items.length,
+				sousTotalProduits: roundCurrency(items.reduce((sum, item) => sum + item.lineTotalTtc, 0))
+			},
+			paymentModes: Object.entries(PAYMENT_MODES).map(([value, label]) => ({ value, label })),
+			deliveryModes: [
+				{
+					value: 'domicile',
+					label: 'Livraison a domicile',
+					frais: DELIVERY_FEES.domicile,
+					available: Boolean(formatAddress(profile?.particulier || profile?.client || profile?.professionnel)),
+					address: formatAddress(profile?.particulier || profile?.client || profile?.professionnel)
+				},
+				{
+					value: 'point_relais',
+					label: 'Point relais',
+					frais: DELIVERY_FEES.point_relais,
+					available: relayOptions.length > 0
+				},
+				{
+					value: 'lieu_vente',
+					label: 'Retrait en point de vente',
+					frais: DELIVERY_FEES.lieu_vente,
+					available: itemPickupOptions.every((item) => item.availablePickupPoints.length > 0)
+				}
+			],
+			relayOptions,
+			items: itemPickupOptions,
+			pickup: {
+				defaultAssignments: defaultPickupAssignments,
+				uniqueSalesPoints: buildUniquePickupPoints(itemPickupOptions)
+			}
+		};
+	} finally {
+		conn.release();
+	}
+}
+
+export async function previewCheckout({
+	db,
+	owner,
+	profile,
+	modeLivraison,
+	modePaiement,
+	relayId,
+	pickupAssignments,
+	voucherId
+}) {
+	const conn = await db.getConnection();
+
+	try {
+		const { cart, items } = await loadCurrentCartWithItems(conn, owner);
+		const relayOptions = await loadRelayOptions(conn);
+		const pickupAvailability = await loadPickupAvailability(conn, cart.idPanier);
+		const itemPickupOptions = buildItemPickupOptions(items, pickupAvailability);
+		const delivery = buildDeliverySelection({
+			modeLivraison,
+			profile,
+			relayOptions,
+			relayId,
+			itemPickupOptions,
+			pickupAssignments
+		});
+		const normalizedModePaiement = normalizeModePaiement(modePaiement);
+		if (!normalizedModePaiement) {
+			throw new CheckoutError(400, 'Mode de paiement invalide.');
+		}
+
+		const normalizedVoucherId = parseVoucherId(voucherId);
+		let appliedVoucher = null;
+
+		if (voucherId != null && normalizedVoucherId == null) {
+			throw new CheckoutError(400, 'Identifiant de bon invalide.');
+		}
+
+		if (normalizedVoucherId != null) {
+			if (owner.column !== 'idParticulier') {
+				throw new CheckoutError(403, 'Bon d achat reserve aux comptes particuliers.');
+			}
+
+			const [voucherRows] = await conn.query(
+				`SELECT idBon, idParticulier, codeBon, valeurEuros, statut, dateExpiration
+				 FROM BonAchat
+				 WHERE idBon = ?
+				 LIMIT 1`,
+				[normalizedVoucherId]
+			);
+			const voucher = voucherRows[0];
+			if (!voucher || Number(voucher.idParticulier) !== Number(owner.id)) {
+				throw new CheckoutError(404, 'Bon d achat introuvable.');
+			}
+			if (voucher.statut !== 'actif') {
+				throw new CheckoutError(409, 'Ce bon d achat n est plus utilisable.');
+			}
+			if (voucher.dateExpiration && new Date(voucher.dateExpiration).getTime() <= Date.now()) {
+				throw new CheckoutError(409, 'Ce bon d achat a expire.');
+			}
+
+			appliedVoucher = {
+				idBon: voucher.idBon,
+				codeBon: voucher.codeBon,
+				valeurEuros: roundCurrency(voucher.valeurEuros)
+			};
+		}
+
+		const sousTotalProduits = roundCurrency(items.reduce((sum, item) => sum + item.lineTotalTtc, 0));
+		const totalBeforeVoucher = roundCurrency(sousTotalProduits + delivery.fraisLivraison);
+		const prixTotal = roundCurrency(
+			Math.max(totalBeforeVoucher - Number(appliedVoucher?.valeurEuros || 0), 0)
+		);
+
+		return {
+			cart: {
+				idPanier: cart.idPanier,
+				itemsCount: items.length
+			},
+			modeLivraison: delivery.modeLivraison,
+			modePaiement: normalizedModePaiement,
+			modePaiementLabel: PAYMENT_MODES[normalizedModePaiement],
+			sousTotalProduits,
+			fraisLivraison: delivery.fraisLivraison,
+			totalBeforeVoucher,
+			prixTotal,
+			appliedVoucher,
+			delivery: delivery.summary,
+			pickupRoute: delivery.pickupRoute,
+			items: items.map((item) => ({
+				idProduit: Number(item.idProduit),
+				nom: item.nom,
+				quantite: Number(item.quantite),
+				prixTTC: item.lineTotalTtc,
+				selectedLieu: delivery.itemAssignments.find((assignment) => assignment.idProduit === Number(item.idProduit))?.selectedLieu || null
+			}))
+		};
+	} finally {
+		conn.release();
+	}
+}
+
 export async function checkoutCart({
 	db,
 	owner,
+	profile,
 	modeLivraison,
+	modePaiement,
+	relayId,
+	pickupAssignments,
 	voucherId
 }) {
 	const conn = await db.getConnection();
@@ -83,54 +625,23 @@ export async function checkoutCart({
 	try {
 		await conn.beginTransaction();
 
-		const [cartRows] = await conn.query(
-			`SELECT *
-			 FROM Panier
-			 WHERE ${owner.column} = ?
-			 LIMIT 1
-			 FOR UPDATE`,
-			[owner.id]
-		);
-
-		const cart = cartRows[0];
-		if (!cart) {
-			throw new CheckoutError(409, 'Aucun panier a valider.');
-		}
-
-		const [itemRows] = await conn.query(
-			`SELECT
-				pp.idPanier,
-				pp.idProduit,
-				pp.quantite,
-				p.nom,
-				p.prix,
-				p.tva,
-				p.reductionProfessionnel,
-				p.stock,
-				p.unitaireOuKilo,
-				p.visible
-			 FROM Panier_Produit pp
-			 JOIN Produit p ON p.idProduit = pp.idProduit
-			 WHERE pp.idPanier = ?
-			 FOR UPDATE`,
-			[cart.idPanier]
-		);
-
-		if (!itemRows.length) {
-			throw new CheckoutError(409, 'Le panier est vide.');
-		}
-
-		const items = itemRows.map((item) => {
-			validateCartLine(item);
-			return {
-				...item,
-				lineTotalTtc: computeLineTotal(item)
-			};
+		const { cart, items } = await loadCurrentCartWithItems(conn, owner);
+		const relayOptions = await loadRelayOptions(conn);
+		const pickupAvailability = await loadPickupAvailability(conn, cart.idPanier);
+		const itemPickupOptions = buildItemPickupOptions(items, pickupAvailability);
+		const delivery = buildDeliverySelection({
+			modeLivraison,
+			profile,
+			relayOptions,
+			relayId,
+			itemPickupOptions,
+			pickupAssignments
 		});
+		const normalizedModePaiement = normalizeModePaiement(modePaiement);
+		if (!normalizedModePaiement) {
+			throw new CheckoutError(400, 'Mode de paiement invalide.');
+		}
 
-		const totalBeforeVoucher = roundCurrency(items.reduce((sum, item) => sum + item.lineTotalTtc, 0));
-		const ownerColumns = buildOwnerOrderColumns(owner);
-		const normalizedModeLivraison = normalizeModeLivraison(modeLivraison);
 		const normalizedVoucherId = parseVoucherId(voucherId);
 		let appliedVoucher = null;
 
@@ -176,18 +687,22 @@ export async function checkoutCart({
 			};
 		}
 
+		const sousTotalProduits = roundCurrency(items.reduce((sum, item) => sum + item.lineTotalTtc, 0));
+		const totalBeforeVoucher = roundCurrency(sousTotalProduits + delivery.fraisLivraison);
 		const prixTotal = roundCurrency(
 			Math.max(totalBeforeVoucher - Number(appliedVoucher?.valeurEuros || 0), 0)
 		);
 		const gainedPoints = owner.column === 'idParticulier' ? computeRewardPoints(prixTotal) : 0;
 		let updatedPointsBalance = null;
+		const ownerColumns = buildOwnerOrderColumns(owner);
 
 		const [orderResult] = await conn.execute(
 			`INSERT INTO Commande
-			 (modeLivraison, prixTotal, status, idParticulier, idProfessionnel)
-			 VALUES (?, ?, 'en_attente', ?, ?)`,
+			 (modeLivraison, modePaiement, prixTotal, status, idParticulier, idProfessionnel)
+			 VALUES (?, ?, ?, 'en_attente', ?, ?)`,
 			[
-				normalizedModeLivraison,
+				delivery.modeLivraison,
+				normalizedModePaiement,
 				prixTotal,
 				ownerColumns.idParticulier,
 				ownerColumns.idProfessionnel
@@ -195,15 +710,43 @@ export async function checkoutCart({
 		);
 
 		for (const item of items) {
+			const linePickupAssignment = delivery.itemAssignments.find((assignment) => assignment.idProduit === Number(item.idProduit));
+
 			await conn.execute(
-				`INSERT INTO LigneCommande (idCommande, idProduit, quantite, prixTTC)
-				 VALUES (?, ?, ?, ?)`,
-				[orderResult.insertId, item.idProduit, item.quantite, item.lineTotalTtc]
+				`INSERT INTO LigneCommande (idCommande, idProduit, quantite, prixTTC, idLieu)
+				 VALUES (?, ?, ?, ?, ?)`,
+				[orderResult.insertId, item.idProduit, item.quantite, item.lineTotalTtc, linePickupAssignment?.idLieu || null]
 			);
 
 			await conn.execute(
 				'UPDATE Produit SET stock = stock - ? WHERE idProduit = ?',
 				[item.quantite, item.idProduit]
+			);
+		}
+
+		if (delivery.modeLivraison === 'lieu_vente') {
+			for (const stop of delivery.pickupRoute.stops) {
+				await conn.execute(
+					`INSERT INTO Livraison
+					 (idCommande, idParticulier, idProfessionnel, modeLivraison, adresse, idRelais, idLieu)
+					 VALUES (?, ?, ?, 'lieu_vente', NULL, NULL, ?)`,
+					[orderResult.insertId, ownerColumns.idParticulier, ownerColumns.idProfessionnel, stop.idLieu]
+				);
+			}
+		} else {
+			await conn.execute(
+				`INSERT INTO Livraison
+				 (idCommande, idParticulier, idProfessionnel, modeLivraison, adresse, idRelais, idLieu)
+				 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+				[
+					orderResult.insertId,
+					ownerColumns.idParticulier,
+					ownerColumns.idProfessionnel,
+					delivery.modeLivraison,
+					delivery.deliveryRecord?.adresse || null,
+					delivery.deliveryRecord?.idRelais || null,
+					delivery.deliveryRecord?.idLieu || null
+				]
 			);
 		}
 
@@ -233,18 +776,22 @@ export async function checkoutCart({
 		}
 
 		await conn.execute('DELETE FROM Panier_Produit WHERE idPanier = ?', [cart.idPanier]);
-
 		await conn.commit();
 
 		return {
 			order: {
 				idCommande: orderResult.insertId,
 				idPanier: cart.idPanier,
-				modeLivraison: normalizedModeLivraison,
+				modeLivraison: delivery.modeLivraison,
+				modePaiement: normalizedModePaiement,
+				sousTotalProduits,
+				fraisLivraison: delivery.fraisLivraison,
 				totalBeforeVoucher,
 				prixTotal,
 				status: 'en_attente'
 			},
+			delivery: delivery.summary,
+			pickupRoute: delivery.pickupRoute,
 			loyalty: owner.column === 'idParticulier'
 				? {
 					gainedPoints,
@@ -256,7 +803,8 @@ export async function checkoutCart({
 				idProduit: item.idProduit,
 				nom: item.nom,
 				quantite: Number(item.quantite),
-				prixTTC: item.lineTotalTtc
+				prixTTC: item.lineTotalTtc,
+				selectedLieu: delivery.itemAssignments.find((assignment) => assignment.idProduit === Number(item.idProduit))?.selectedLieu || null
 			}))
 		};
 	} catch (error) {
@@ -267,4 +815,4 @@ export async function checkoutCart({
 	}
 }
 
-export { CheckoutError, computeRewardPoints };
+export { CheckoutError, computeRewardPoints, DELIVERY_FEES, PAYMENT_MODES };
