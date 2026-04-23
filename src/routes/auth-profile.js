@@ -136,6 +136,25 @@ router.put('/profile', express.json(), async (req, res) => {
 	}
 });
 
+router.post('/profile/change-email', express.json(), async (req, res) => {
+	try {
+		const result = await auth.api.changeEmail({
+			body: {
+				newEmail: String(req.body?.newEmail || '').trim(),
+				callbackURL: `${process.env.FRONTEND_ORIGIN || 'http://localhost:3000'}/compte?emailChanged=1`
+			},
+			headers: fromNodeHeaders(req.headers)
+		});
+
+		return res.json({
+			status: Boolean(result?.status ?? true),
+			message: 'Un email de verification a ete envoye a votre nouvelle adresse.'
+		});
+	} catch (error) {
+		return handleAuthError(error, res);
+	}
+});
+
 router.delete('/profile', async (req, res) => {
 	try {
 		const session = await auth.api.getSession({

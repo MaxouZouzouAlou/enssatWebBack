@@ -129,12 +129,13 @@ function createDb(connection) {
 	};
 }
 
-function createRouter({ authClient, db, profile = particulierProfile() }) {
+function createRouter({ authClient, db, profile = particulierProfile(), geocodeAddressFn = async () => ({ latitude: 48.7319, longitude: -3.4579 }) }) {
 	return createOrdersRouter({
 		authClient,
 		db,
 		getProfileByAuthUserId: async () => profile,
-		headersFromNode: (headers) => headers
+		headersFromNode: (headers) => headers,
+		geocodeAddressFn
 	});
 }
 
@@ -216,9 +217,209 @@ test('GET /checkout/context returns guided checkout data', async () => {
 
 	assert.equal(response.statusCode, 200);
 	assert.equal(response.body.cart.idPanier, 5);
+	assert.deepEqual(response.body.defaultDeliveryAddress, {
+		adresse_ligne: '12 rue des Tests',
+		code_postal: '22300',
+		ville: 'Lannion',
+		label: '12 rue des Tests, 22300 Lannion'
+	});
+	assert.deepEqual(response.body.paymentModes, [
+		{
+			value: 'carte_bancaire',
+			label: 'Carte bancaire'
+		},
+		{
+			value: 'paypal',
+			label: 'PayPal'
+		},
+		{
+			value: 'apple_pay',
+			label: 'Apple Pay'
+		}
+	]);
 	assert.equal(response.body.relayOptions.length, 1);
 	assert.equal(response.body.items.length, 1);
 	assert.equal(response.body.pickup.defaultAssignments.length, 1);
+	assert.equal(response.body.pickup.optimizedStopsCount, 1);
+	assert.equal(response.body.pickup.optimizedRoute.stops.length, 1);
+});
+
+test('GET /checkout/context optimizes default pickup assignments from the personal address', async () => {
+	const fakeDb = {
+		async getConnection() {
+			return {
+				async query(sql) {
+					if (/FROM Panier\s/i.test(sql)) return [[{ idPanier: 5, idParticulier: 10 }]];
+					if (sql.includes('JOIN LieuVente')) {
+						return [[
+							{
+								idProduit: 6,
+								idLieu: 3,
+								nom: 'Centre ville',
+								horaires: '8h-13h',
+								adresse_ligne: '1 rue A',
+								code_postal: '22300',
+								ville: 'Lannion',
+								latitude: 48.7310,
+								longitude: -3.4590
+							},
+							{
+								idProduit: 6,
+								idLieu: 4,
+								nom: 'Zone nord',
+								horaires: '8h-13h',
+								adresse_ligne: '10 rue B',
+								code_postal: '22300',
+								ville: 'Lannion',
+								latitude: 48.7600,
+								longitude: -3.4300
+							},
+							{
+								idProduit: 7,
+								idLieu: 5,
+								nom: 'Quartier gare',
+								horaires: '8h-13h',
+								adresse_ligne: '2 rue C',
+								code_postal: '22300',
+								ville: 'Lannion',
+								latitude: 48.7320,
+								longitude: -3.4580
+							},
+							{
+								idProduit: 7,
+								idLieu: 6,
+								nom: 'Sortie ville',
+								horaires: '8h-13h',
+								adresse_ligne: '20 rue D',
+								code_postal: '22300',
+								ville: 'Lannion',
+								latitude: 48.7710,
+								longitude: -3.4210
+							}
+						]];
+					}
+					if (sql.includes('FROM Panier_Produit pp')) {
+						return [[
+							{
+								idPanier: 5,
+								idProduit: 6,
+								quantite: 1,
+								nom: 'Produit A',
+								prix: 2,
+								tva: 5.5,
+								reductionProfessionnel: 0,
+								stock: 50,
+								unitaireOuKilo: 1,
+								visible: 1
+							},
+							{
+								idPanier: 5,
+								idProduit: 7,
+								quantite: 1,
+								nom: 'Produit B',
+								prix: 3,
+								tva: 5.5,
+								reductionProfessionnel: 0,
+								stock: 50,
+								unitaireOuKilo: 1,
+								visible: 1
+							}
+						]];
+					}
+					if (sql.includes('FROM PointRelais')) return [[]];
+					throw new Error(`unexpected query: ${sql}`);
+				},
+				release() {}
+			};
+		}
+	};
+
+	const router = createRouter({
+		authClient: createAuthClient({ user: { id: 'auth-user-1' } }),
+		db: fakeDb,
+		geocodeAddressFn: async () => ({ latitude: 48.7312, longitude: -3.4588 })
+	});
+
+	const response = await dispatch(router, {
+		method: 'GET',
+		url: '/checkout/context'
+	});
+
+	assert.equal(response.statusCode, 200);
+	assert.deepEqual(response.body.pickup.defaultAssignments, [
+		{ idProduit: 6, idLieu: 3 },
+		{ idProduit: 7, idLieu: 5 }
+	]);
+	assert.equal(response.body.pickup.optimizedRoute.stops.length, 2);
+	assert.equal(response.body.pickup.optimizedRoute.stops[0].idLieu, 3);
+	assert.equal(response.body.pickup.optimizedRoute.stops[1].idLieu, 5);
+});
+
+test('POST /checkout/preview accepts a custom home delivery address', async () => {
+	const fakeDb = {
+		async getConnection() {
+			return {
+				async query(sql) {
+					if (/FROM Panier\s/i.test(sql)) return [[{ idPanier: 5, idParticulier: 10 }]];
+					if (sql.includes('JOIN LieuVente')) return [[]];
+					if (sql.includes('FROM Panier_Produit pp') && sql.includes('JOIN Produit p')) {
+						return [[{
+							idPanier: 5,
+							idProduit: 6,
+							quantite: 2,
+							nom: 'Baguette tradition',
+							prix: 1.2,
+							tva: 5.5,
+							reductionProfessionnel: 0,
+							stock: 50,
+							unitaireOuKilo: 1,
+							visible: 1
+						}]];
+					}
+					if (sql.includes('FROM PointRelais')) return [[]];
+					throw new Error(`unexpected query: ${sql}`);
+				},
+				release() {}
+			};
+		}
+	};
+
+	const router = createRouter({
+		authClient: createAuthClient({ user: { id: 'auth-user-1' } }),
+		db: fakeDb,
+		profile: {
+			...particulierProfile(),
+			particulier: {
+				id: 10,
+				adresse_ligne: '',
+				code_postal: '',
+				ville: ''
+			},
+			client: {
+				id: 10,
+				adresse_ligne: '',
+				code_postal: '',
+				ville: ''
+			}
+		}
+	});
+
+	const response = await dispatch(router, {
+		method: 'POST',
+		url: '/checkout/preview',
+		body: {
+			modeLivraison: 'domicile',
+			modePaiement: 'carte_bancaire',
+			adresseLivraison: {
+				adresse_ligne: '5 rue des Fleurs',
+				code_postal: '35000',
+				ville: 'Rennes'
+			}
+		}
+	});
+
+	assert.equal(response.statusCode, 200);
+	assert.equal(response.body.delivery.address.label, '5 rue des Fleurs, 35000 Rennes');
 });
 
 test('POST /checkout/preview returns a priced relay checkout preview', async () => {
@@ -278,6 +479,62 @@ test('POST /checkout/preview returns a priced relay checkout preview', async () 
 	assert.equal(response.body.modePaiement, 'carte_bancaire');
 	assert.equal(response.body.fraisLivraison, 3.9);
 	assert.equal(response.body.prixTotal, 6.43);
+	assert.deepEqual(response.body.delivery.relay.coordinates, { latitude: 48.7319, longitude: -3.4579 });
+});
+
+test('POST /checkout/preview returns a validation error when no relay is selected', async () => {
+	const fakeDb = {
+		async getConnection() {
+			return {
+				async query(sql) {
+					if (/FROM Panier\s/i.test(sql)) return [[{ idPanier: 5, idParticulier: 10 }]];
+					if (sql.includes('JOIN LieuVente')) return [[]];
+					if (sql.includes('FROM Panier_Produit pp') && sql.includes('JOIN Produit p')) {
+						return [[{
+							idPanier: 5,
+							idProduit: 6,
+							quantite: 2,
+							nom: 'Baguette tradition',
+							prix: 1.2,
+							tva: 5.5,
+							reductionProfessionnel: 0,
+							stock: 50,
+							unitaireOuKilo: 1,
+							visible: 1
+						}]];
+					}
+					if (sql.includes('FROM PointRelais')) {
+						return [[{
+							idRelais: 2,
+							nom: 'Carrefour City',
+							adresse_ligne: '8 rue des Augustins',
+							code_postal: '22300',
+							ville: 'Lannion'
+						}]];
+					}
+					throw new Error(`unexpected query: ${sql}`);
+				},
+				release() {}
+			};
+		}
+	};
+
+	const router = createRouter({
+		authClient: createAuthClient({ user: { id: 'auth-user-1' } }),
+		db: fakeDb
+	});
+
+	const response = await dispatch(router, {
+		method: 'POST',
+		url: '/checkout/preview',
+		body: {
+			modeLivraison: 'point_relais',
+			modePaiement: 'carte_bancaire'
+		}
+	});
+
+	assert.equal(response.statusCode, 400);
+	assert.equal(response.body.error, 'Selectionnez un point relais.');
 });
 
 test('POST /checkout/preview returns a per-product pickup route', async () => {

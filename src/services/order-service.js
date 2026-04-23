@@ -16,8 +16,8 @@ const DELIVERY_FEES = {
 
 const PAYMENT_MODES = {
 	carte_bancaire: 'Carte bancaire',
-	paiement_livraison: 'Paiement à la livraison',
-	especes: 'Espèces'
+	paypal: 'PayPal',
+	apple_pay: 'Apple Pay'
 };
 
 function roundCurrency(value) {
@@ -50,7 +50,7 @@ function parsePositiveInteger(value) {
 function computeRewardPoints(totalPaid) {
 	const normalizedTotal = Number(totalPaid || 0);
 	if (!Number.isFinite(normalizedTotal) || normalizedTotal <= 0) return 0;
-	return Math.max(Math.floor(normalizedTotal), 0);
+	return Math.max(Math.floor(normalizedTotal / 2), 0);
 }
 
 function buildOwnerOrderColumns(owner) {
@@ -133,6 +133,10 @@ function formatAddress(address) {
 	};
 }
 
+function resolveDefaultDeliveryAddress(profile) {
+	return formatAddress(profile?.particulier || profile?.client || profile?.professionnel);
+}
+
 function mapRelayRow(row) {
 	return {
 		idRelais: Number(row.idRelais),
@@ -143,6 +147,27 @@ function mapRelayRow(row) {
 			ville: row.ville
 		}
 	};
+}
+
+async function enrichRelayWithCoordinates(relay, geocodeAddressFn) {
+	if (!relay || typeof geocodeAddressFn !== 'function') return relay;
+
+	try {
+		const coordinates = await geocodeAddressFn({
+			adresse_ligne: relay.adresse?.ligne,
+			code_postal: relay.adresse?.codePostal,
+			ville: relay.adresse?.ville
+		});
+
+		if (!coordinates) return relay;
+
+		return {
+			...relay,
+			coordinates
+		};
+	} catch {
+		return relay;
+	}
 }
 
 function mapSalesPointRow(row) {
@@ -323,6 +348,82 @@ function buildRecommendedPickupAssignments(itemPickupOptions) {
 	return assignments;
 }
 
+function comparePickupPlans(candidate, best) {
+	if (!best) return -1;
+	if (candidate.totalDistanceKm !== best.totalDistanceKm) {
+		return candidate.totalDistanceKm - best.totalDistanceKm;
+	}
+	if (candidate.distinctStopsCount !== best.distinctStopsCount) {
+		return candidate.distinctStopsCount - best.distinctStopsCount;
+	}
+	return candidate.assignments.length - best.assignments.length;
+}
+
+function buildPickupPlanFromAssignments(itemPickupOptions, assignments, originCoordinates) {
+	if (!originCoordinates) return null;
+	const selection = buildPickupSelection(itemPickupOptions, assignments);
+	if (selection.missingItems.length || selection.invalidAssignments.length) return null;
+
+	const pickupRoute = computeOptimalPickupRoute(selection.selectedStops, { originCoordinates });
+
+	return {
+		assignments: selection.assignments.map((assignment) => ({
+			idProduit: assignment.idProduit,
+			idLieu: assignment.idLieu
+		})),
+		detailedAssignments: selection.assignments,
+		selectedStops: selection.selectedStops,
+		pickupRoute,
+		distinctStopsCount: selection.selectedStops.length,
+		totalDistanceKm: Number(pickupRoute.totalDistanceKm || 0)
+	};
+}
+
+function buildOptimizedPickupPlan(itemPickupOptions, originCoordinates) {
+	const normalizedItems = [...itemPickupOptions]
+		.map((item) => ({
+			...item,
+			availablePickupPoints: item.availablePickupPoints || []
+		}))
+		.sort((left, right) => left.availablePickupPoints.length - right.availablePickupPoints.length);
+
+	if (!normalizedItems.length || normalizedItems.some((item) => item.availablePickupPoints.length === 0)) {
+		return null;
+	}
+
+	let bestPlan = null;
+	const currentAssignments = [];
+	const currentStops = new Set();
+
+		function visit(index) {
+
+		if (index >= normalizedItems.length) {
+			const candidatePlan = buildPickupPlanFromAssignments(itemPickupOptions, currentAssignments, originCoordinates);
+			if (!candidatePlan) return;
+			if (comparePickupPlans(candidatePlan, bestPlan) < 0) {
+				bestPlan = candidatePlan;
+			}
+			return;
+		}
+
+		const item = normalizedItems[index];
+		for (const point of item.availablePickupPoints) {
+			const idLieu = Number(point.idLieu);
+			currentAssignments.push({ idProduit: item.idProduit, idLieu });
+			const alreadyUsed = currentStops.has(idLieu);
+			if (!alreadyUsed) currentStops.add(idLieu);
+
+			visit(index + 1);
+
+			currentAssignments.pop();
+			if (!alreadyUsed) currentStops.delete(idLieu);
+		}
+	}
+
+	visit(0);
+	return bestPlan;
+}
+
 function buildPickupSelection(itemPickupOptions, rawAssignments) {
 	const assignments = normalizePickupAssignments(rawAssignments);
 	const assignmentMap = buildAssignmentMap(assignments);
@@ -367,6 +468,8 @@ function buildDeliverySelection({
 	profile,
 	relayOptions,
 	relayId,
+	originCoordinates,
+	adresseLivraison,
 	itemPickupOptions,
 	pickupAssignments
 }) {
@@ -376,9 +479,9 @@ function buildDeliverySelection({
 	}
 
 	if (normalizedModeLivraison === 'domicile') {
-		const address = formatAddress(profile?.particulier || profile?.client || profile?.professionnel);
+		const address = formatAddress(adresseLivraison) || resolveDefaultDeliveryAddress(profile);
 		if (!address) {
-			throw new CheckoutError(409, 'Ajoutez d abord votre adresse personnelle pour la livraison a domicile.');
+			throw new CheckoutError(400, 'Renseignez une adresse de livraison complete.');
 		}
 
 		return {
@@ -439,7 +542,7 @@ function buildDeliverySelection({
 		throw new CheckoutError(409, 'Certains points de vente choisis ne correspondent pas aux produits du panier.');
 	}
 
-	const pickupRoute = computeOptimalPickupRoute(pickupSelection.selectedStops);
+	const pickupRoute = computeOptimalPickupRoute(pickupSelection.selectedStops, { originCoordinates });
 
 	return {
 		modeLivraison: normalizedModeLivraison,
@@ -458,7 +561,8 @@ function buildDeliverySelection({
 export async function getCheckoutContext({
 	db,
 	owner,
-	profile
+	profile,
+	geocodeAddressFn
 }) {
 	const conn = await db.getConnection();
 
@@ -467,7 +571,18 @@ export async function getCheckoutContext({
 		const relayOptions = await loadRelayOptions(conn);
 		const pickupAvailability = await loadPickupAvailability(conn, cart.idPanier);
 		const itemPickupOptions = buildItemPickupOptions(items, pickupAvailability);
-		const defaultPickupAssignments = buildRecommendedPickupAssignments(itemPickupOptions);
+		const defaultDeliveryAddress = resolveDefaultDeliveryAddress(profile);
+		let originCoordinates = null;
+		if (defaultDeliveryAddress && typeof geocodeAddressFn === 'function') {
+			try {
+				originCoordinates = await geocodeAddressFn(defaultDeliveryAddress);
+			} catch {
+				originCoordinates = null;
+			}
+		}
+		const optimizedPickupPlan = buildOptimizedPickupPlan(itemPickupOptions, originCoordinates);
+		const fallbackAssignments = buildRecommendedPickupAssignments(itemPickupOptions);
+		const defaultPickupAssignments = optimizedPickupPlan?.assignments || fallbackAssignments;
 
 		return {
 			cart: {
@@ -475,14 +590,15 @@ export async function getCheckoutContext({
 				itemsCount: items.length,
 				sousTotalProduits: roundCurrency(items.reduce((sum, item) => sum + item.lineTotalTtc, 0))
 			},
+			defaultDeliveryAddress,
 			paymentModes: Object.entries(PAYMENT_MODES).map(([value, label]) => ({ value, label })),
 			deliveryModes: [
 				{
 					value: 'domicile',
 					label: 'Livraison a domicile',
 					frais: DELIVERY_FEES.domicile,
-					available: Boolean(formatAddress(profile?.particulier || profile?.client || profile?.professionnel)),
-					address: formatAddress(profile?.particulier || profile?.client || profile?.professionnel)
+					available: true,
+					address: resolveDefaultDeliveryAddress(profile)
 				},
 				{
 					value: 'point_relais',
@@ -501,7 +617,12 @@ export async function getCheckoutContext({
 			items: itemPickupOptions,
 			pickup: {
 				defaultAssignments: defaultPickupAssignments,
-				uniqueSalesPoints: buildUniquePickupPoints(itemPickupOptions)
+				uniqueSalesPoints: buildUniquePickupPoints(itemPickupOptions),
+				optimizedRoute: optimizedPickupPlan?.pickupRoute || null,
+				optimizedStopsCount: optimizedPickupPlan?.distinctStopsCount || 0,
+				originCoordinates,
+				requiresGeocodedOrigin: true,
+				originGeocoded: Boolean(originCoordinates)
 			}
 		};
 	} finally {
@@ -516,8 +637,10 @@ export async function previewCheckout({
 	modeLivraison,
 	modePaiement,
 	relayId,
+	adresseLivraison,
 	pickupAssignments,
-	voucherId
+	voucherId,
+	geocodeAddressFn
 }) {
 	const conn = await db.getConnection();
 
@@ -526,11 +649,27 @@ export async function previewCheckout({
 		const relayOptions = await loadRelayOptions(conn);
 		const pickupAvailability = await loadPickupAvailability(conn, cart.idPanier);
 		const itemPickupOptions = buildItemPickupOptions(items, pickupAvailability);
+		const originAddress = modeLivraison === 'lieu_vente'
+			? (formatAddress(adresseLivraison) || resolveDefaultDeliveryAddress(profile))
+			: null;
+		let originCoordinates = null;
+		if (originAddress && typeof geocodeAddressFn === 'function') {
+			try {
+				originCoordinates = await geocodeAddressFn(originAddress);
+			} catch {
+				originCoordinates = null;
+			}
+		}
+		if (modeLivraison === 'lieu_vente' && !originCoordinates) {
+			throw new CheckoutError(422, 'Impossible de geocoder votre adresse de depart. Renseignez une adresse personnelle exploitable avant de calculer le trajet.');
+		}
 		const delivery = buildDeliverySelection({
 			modeLivraison,
 			profile,
 			relayOptions,
 			relayId,
+			originCoordinates,
+			adresseLivraison,
 			itemPickupOptions,
 			pickupAssignments
 		});
@@ -581,6 +720,12 @@ export async function previewCheckout({
 		const prixTotal = roundCurrency(
 			Math.max(totalBeforeVoucher - Number(appliedVoucher?.valeurEuros || 0), 0)
 		);
+		const deliverySummary = delivery.modeLivraison === 'point_relais'
+			? {
+				...delivery.summary,
+				relay: await enrichRelayWithCoordinates(delivery.summary.relay, geocodeAddressFn)
+			}
+			: delivery.summary;
 
 		return {
 			cart: {
@@ -595,7 +740,7 @@ export async function previewCheckout({
 			totalBeforeVoucher,
 			prixTotal,
 			appliedVoucher,
-			delivery: delivery.summary,
+			delivery: deliverySummary,
 			pickupRoute: delivery.pickupRoute,
 			items: items.map((item) => ({
 				idProduit: Number(item.idProduit),
@@ -617,8 +762,10 @@ export async function checkoutCart({
 	modeLivraison,
 	modePaiement,
 	relayId,
+	adresseLivraison,
 	pickupAssignments,
-	voucherId
+	voucherId,
+	geocodeAddressFn
 }) {
 	const conn = await db.getConnection();
 
@@ -629,11 +776,27 @@ export async function checkoutCart({
 		const relayOptions = await loadRelayOptions(conn);
 		const pickupAvailability = await loadPickupAvailability(conn, cart.idPanier);
 		const itemPickupOptions = buildItemPickupOptions(items, pickupAvailability);
+		const originAddress = modeLivraison === 'lieu_vente'
+			? (formatAddress(adresseLivraison) || resolveDefaultDeliveryAddress(profile))
+			: null;
+		let originCoordinates = null;
+		if (originAddress && typeof geocodeAddressFn === 'function') {
+			try {
+				originCoordinates = await geocodeAddressFn(originAddress);
+			} catch {
+				originCoordinates = null;
+			}
+		}
+		if (modeLivraison === 'lieu_vente' && !originCoordinates) {
+			throw new CheckoutError(422, 'Impossible de geocoder votre adresse de depart. Renseignez une adresse personnelle exploitable avant de calculer le trajet.');
+		}
 		const delivery = buildDeliverySelection({
 			modeLivraison,
 			profile,
 			relayOptions,
 			relayId,
+			originCoordinates,
+			adresseLivraison,
 			itemPickupOptions,
 			pickupAssignments
 		});

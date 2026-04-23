@@ -6,8 +6,40 @@ import { getBusinessProfileByAuthUserId } from '../services/auth-profile-service
 
 const router = express.Router();
 
-const DEFAULT_VOUCHER_POINTS = 500;
-const DEFAULT_VOUCHER_VALUE_EUR = 5;
+const VOUCHER_OPTIONS = Object.freeze([
+	{ requiredPoints: 1000, rewardEuro: 5 },
+	{ requiredPoints: 2000, rewardEuro: 10 },
+	{ requiredPoints: 5000, rewardEuro: 25 },
+	{ requiredPoints: 10000, rewardEuro: 50 }
+]);
+
+function getVoucherOptionByPoints(pointsToSpend) {
+	return VOUCHER_OPTIONS.find((option) => option.requiredPoints === Number(pointsToSpend)) || null;
+}
+
+function buildVoucherOptions(points) {
+	return VOUCHER_OPTIONS.map((option) => ({
+		...option,
+		remainingPoints: Math.max(option.requiredPoints - points, 0),
+		canRedeem: points >= option.requiredPoints
+	}));
+}
+
+function computeNextVoucherTier(points) {
+	const nextOption = VOUCHER_OPTIONS.find((option) => points < option.requiredPoints);
+	if (nextOption) {
+		return {
+			...nextOption,
+			remainingPoints: Math.max(nextOption.requiredPoints - points, 0)
+		};
+	}
+
+	const highestOption = VOUCHER_OPTIONS[VOUCHER_OPTIONS.length - 1];
+	return {
+		...highestOption,
+		remainingPoints: 0
+	};
+}
 
 function buildVoucherCode() {
   return `BON-${Math.random().toString(36).slice(2, 8).toUpperCase()}-${Date.now().toString(36).toUpperCase()}`;
@@ -81,11 +113,8 @@ router.get('/me', requireParticulier, async (req, res, next) => {
     return res.json({
       particulierId,
       pointsFidelite: points,
-      prochainPalier: {
-        requiredPoints: DEFAULT_VOUCHER_POINTS,
-        rewardEuro: DEFAULT_VOUCHER_VALUE_EUR,
-        remainingPoints: Math.max(DEFAULT_VOUCHER_POINTS - points, 0),
-      },
+      prochainPalier: computeNextVoucherTier(points),
+      voucherOptions: buildVoucherOptions(points),
       challenges: challenges.map((c) => ({
         ...c,
         pointsRecompense: Number(c.pointsRecompense || 0),
@@ -202,13 +231,14 @@ router.post('/redeem-voucher', requireParticulier, async (req, res, next) => {
 
   try {
     const particulierId = req.businessProfile.particulier.id;
-    const pointsToSpend = Number(req.body?.pointsToSpend || DEFAULT_VOUCHER_POINTS);
+    const pointsToSpend = Number(req.body?.pointsToSpend || VOUCHER_OPTIONS[0].requiredPoints);
+    const selectedOption = getVoucherOptionByPoints(pointsToSpend);
 
-    if (!Number.isInteger(pointsToSpend) || pointsToSpend <= 0 || pointsToSpend % DEFAULT_VOUCHER_POINTS !== 0) {
-      return res.status(400).json({ error: `pointsToSpend doit etre un multiple de ${DEFAULT_VOUCHER_POINTS}.` });
+    if (!Number.isInteger(pointsToSpend) || pointsToSpend <= 0 || !selectedOption) {
+      return res.status(400).json({ error: 'pointsToSpend doit correspondre a un palier valide.' });
     }
 
-    const voucherValue = (pointsToSpend / DEFAULT_VOUCHER_POINTS) * DEFAULT_VOUCHER_VALUE_EUR;
+    const voucherValue = selectedOption.rewardEuro;
 
     await conn.beginTransaction();
 

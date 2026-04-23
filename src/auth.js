@@ -2,9 +2,10 @@ import { betterAuth } from 'better-auth';
 import {
 	ensureBusinessProfile,
 	normalizeAccountType,
+	syncBusinessEmailByAuthUserId,
 	validateSiret
 } from './services/auth-profile-service.js';
-import { sendAccountVerificationEmail, sendPasswordResetEmail } from './services/email-service.js';
+import { sendAccountVerificationEmail, sendEmailChangeVerificationEmail, sendPasswordResetEmail } from './services/email-service.js';
 import pool from './server_config/db.js';
 
 const frontendOrigin = process.env.FRONTEND_ORIGIN || 'http://localhost:3000';
@@ -56,6 +57,7 @@ export const auth = betterAuth({
 			await ensureBusinessProfile(user, {
 				accountType: user.accountType || 'particulier'
 			});
+			await syncBusinessEmailByAuthUserId(user.id, user.email);
 		}
 	},
 	socialProviders: googleAuthEnabled
@@ -68,6 +70,10 @@ export const auth = betterAuth({
 		}
 		: {},
 	user: {
+		changeEmail: {
+			enabled: true,
+			updateEmailWithoutVerification: false
+		},
 		additionalFields: {
 			accountType: {
 				type: 'string',

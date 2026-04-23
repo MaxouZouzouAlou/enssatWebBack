@@ -52,6 +52,43 @@ export async function sendAccountVerificationEmail({ user, url }) {
 	});
 }
 
+export async function sendEmailChangeVerificationEmail({ user, newEmail, url }) {
+	const from = process.env.MAIL_FROM || "LOCAL'ZH <no-reply@localzh.local>";
+	const subject = "Confirmez votre nouvelle adresse email LOCAL'ZH";
+	const text = [
+		`Bonjour ${user.name || ''}`.trim(),
+		'',
+		`Vous avez demande a remplacer votre adresse actuelle par : ${newEmail}`,
+		'',
+		'Cliquez sur le lien suivant pour confirmer ce changement :',
+		url,
+		'',
+		'Si vous n etes pas a l origine de cette demande, ignorez cet email.'
+	].join('\n');
+
+	const html = `
+		<p>Bonjour ${escapeHtml(user.name || '')},</p>
+		<p>Vous avez demande a remplacer votre adresse actuelle par : <strong>${escapeHtml(newEmail)}</strong></p>
+		<p>Cliquez sur le lien suivant pour confirmer ce changement :</p>
+		<p><a href="${escapeHtml(url)}">Confirmer ma nouvelle adresse email</a></p>
+		<p>Si vous n etes pas a l origine de cette demande, ignorez cet email.</p>
+	`;
+
+	const transport = getTransport();
+	if (!transport) {
+		console.warn(`Email change verification for ${newEmail}: ${url}`);
+		return;
+	}
+
+	await transport.sendMail({
+		from,
+		to: newEmail,
+		subject,
+		text,
+		html
+	});
+}
+
 export async function sendPasswordResetEmail({ user, url }) {
 	const from = process.env.MAIL_FROM || "LOCAL'ZH <no-reply@localzh.local>";
 	const subject = "Réinitialisation de votre mot de passe LOCAL'ZH";
