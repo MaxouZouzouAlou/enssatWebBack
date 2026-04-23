@@ -212,10 +212,15 @@ async function createParticulierProfile(conn, { authUserId, email, nom, prenom }
 }
 
 async function createProfessionalProfile(conn, { authUserId, email, entreprise, nom, prenom }) {
-	const companyName = trim(entreprise.nom);
-	const siret = validateSiret(entreprise.siret);
-	if (!companyName) {
-		throw new ValidationError("Le nom de l'entreprise est requis.");
+	const companyName = trim(entreprise?.nom || '');
+	const siretRaw = entreprise?.siret;
+	let siret = null;
+	// Only validate and create entreprise-related records if a SIRET was provided
+	if (siretRaw != null && String(siretRaw).trim() !== '') {
+		siret = validateSiret(siretRaw);
+		if (!companyName) {
+			throw new ValidationError("Le nom de l'entreprise est requis.");
+		}
 	}
 
 	const [userResult] = await conn.execute(
@@ -224,29 +229,34 @@ async function createProfessionalProfile(conn, { authUserId, email, entreprise, 
 		 VALUES (?, ?, ?, ?, NULL, NULL, NULL, NULL, NULL)`,
 		['professionnel', nom, prenom, email]
 	);
-	const professionnelId = userResult.insertId;
+	const utilisateurId = userResult.insertId;
 
-	await conn.execute('INSERT INTO Professionnel (idProfessionnel) VALUES (?)', [professionnelId]);
+	// Insert into Professionnel: set the `id` foreign key to the Utilisateur id.
+	// Let `idProfessionnel` auto-increment and capture it from insertId.
+	const [professionnelResult] = await conn.execute('INSERT INTO Professionnel (id) VALUES (?)', [utilisateurId]);
+	const professionnelId = professionnelResult.insertId;
+	let entrepriseId = null;
+	if (siret) {
+		const [existingCompanyRows] = await conn.execute('SELECT idEntreprise FROM Entreprise WHERE siret = ? LIMIT 1', [siret]);
+		entrepriseId = existingCompanyRows[0]?.idEntreprise;
+		if (!entrepriseId) {
+			const [companyResult] = await conn.execute(
+				'INSERT INTO Entreprise (nom, siret, adresse_ligne, code_postal, ville) VALUES (?, ?, ?, ?, ?)',
+				[companyName, siret, entreprise.adresse_ligne, entreprise.code_postal, entreprise.ville]
+			);
+			entrepriseId = companyResult.insertId;
+		}
 
-	const [existingCompanyRows] = await conn.execute('SELECT idEntreprise FROM Entreprise WHERE siret = ? LIMIT 1', [siret]);
-	let entrepriseId = existingCompanyRows[0]?.idEntreprise;
-	if (!entrepriseId) {
-		const [companyResult] = await conn.execute(
-			'INSERT INTO Entreprise (nom, siret, adresse_ligne, code_postal, ville) VALUES (?, ?, ?, ?, ?)',
-			[companyName, siret, entreprise.adresse_ligne, entreprise.code_postal, entreprise.ville]
-		);
-		entrepriseId = companyResult.insertId;
+		await conn.execute('INSERT INTO Professionnel_SIRET (idProfessionnel, numero_siret) VALUES (?, ?)', [
+			professionnelId,
+			siret
+		]);
 	}
-
-	await conn.execute('INSERT INTO Professionnel_SIRET (idProfessionnel, numero_siret) VALUES (?, ?)', [
-		professionnelId,
-		siret
-	]);
 	await conn.execute(
 		`INSERT INTO AuthProfile
 		 (authUserId, accountType, particulierId, professionnelId, entrepriseId, createdAt, updatedAt)
-		 VALUES (?, 'professionnel', NULL, ?, ?, NOW(), NOW())`,
-		[authUserId, professionnelId, entrepriseId]
+		VALUES (?, 'professionnel', NULL, ?, ?, NOW(), NOW())`,
+		[authUserId, professionnelId, entrepriseId || null]
 	);
 }
 
