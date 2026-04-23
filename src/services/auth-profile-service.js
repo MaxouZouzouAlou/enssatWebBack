@@ -267,6 +267,7 @@ export async function getBusinessProfileByAuthUserId(authUserId) {
 			particulierUtilisateur.email AS particulierEmail,
 			particulierUtilisateur.nom AS particulierNom,
 			particulierUtilisateur.prenom AS particulierPrenom,
+			particulier.pointsFidelite AS particulierPointsFidelite,
 			particulierUtilisateur.num_telephone AS particulierTelephone,
 			particulierUtilisateur.adresse_ligne AS particulierAdresseLigne,
 			particulierUtilisateur.code_postal AS particulierCodePostal,
@@ -311,6 +312,7 @@ export async function getBusinessProfileByAuthUserId(authUserId) {
 		particulier: row.particulierId
 			? {
 				id: row.particulierId,
+				pointsFidelite: Number(row.particulierPointsFidelite || 0),
 				email: row.particulierEmail,
 				num_telephone: row.particulierTelephone,
 				adresse_ligne: row.particulierAdresseLigne,
@@ -321,6 +323,7 @@ export async function getBusinessProfileByAuthUserId(authUserId) {
 		client: row.particulierId
 			? {
 				id: row.particulierId,
+				pointsFidelite: Number(row.particulierPointsFidelite || 0),
 				email: row.particulierEmail,
 				num_telephone: row.particulierTelephone,
 				adresse_ligne: row.particulierAdresseLigne,

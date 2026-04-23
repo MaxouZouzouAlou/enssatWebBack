@@ -28,7 +28,18 @@ const router = express.Router();
  */
 router.get('/', async (req, res, next) => {
 	try {
-		const [rows] = await pool.query('SELECT * FROM Produit');
+		const [rows] = await pool.query(
+			`SELECT
+				p.*,
+				COALESCE(vp.noteMoyenne, 0) AS noteMoyenneProduit,
+				COALESCE(vp.nombreAvis, 0) AS nombreAvisProduit,
+				COALESCE(vpro.noteMoyenne, 0) AS noteMoyenneProducteur,
+				COALESCE(vpro.nombreAvis, 0) AS nombreAvisProducteur
+			 FROM Produit p
+			 LEFT JOIN Vue_Note_Moyenne_Produit vp ON vp.idProduit = p.idProduit
+			 LEFT JOIN Vue_Note_Moyenne_Professionnel vpro ON vpro.idProfessionnel = p.idProfessionnel
+			 ORDER BY p.idProduit ASC`
+		);
 		res.json(rows);
 	} catch (err) {
 		next(err);
