@@ -603,6 +603,137 @@ END$$
 
 DELIMITER ;
 
+-- -------------------------------------------------------------
+-- 17. Avis et notation
+-- -------------------------------------------------------------
+CREATE TABLE AvisProduit (
+    idAvisProduit     INT PRIMARY KEY AUTO_INCREMENT,
+    idParticulier     INT NOT NULL,
+    idProduit         INT NOT NULL,
+    note              TINYINT NOT NULL,
+    commentaire       VARCHAR(1000),
+    dateCreation      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    dateModification  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    CONSTRAINT chk_avis_produit_note CHECK (note >= 1 AND note <= 5),
+    CONSTRAINT uq_avis_produit_auteur_cible UNIQUE (idParticulier, idProduit),
+    CONSTRAINT fk_avis_produit_particulier
+        FOREIGN KEY (idParticulier) REFERENCES Particulier(idParticulier)
+        ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_avis_produit_produit
+        FOREIGN KEY (idProduit) REFERENCES Produit(idProduit)
+        ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+CREATE INDEX idx_avis_produit_produit ON AvisProduit(idProduit);
+CREATE INDEX idx_avis_produit_note ON AvisProduit(note);
+
+CREATE TABLE AvisProfessionnel (
+    idAvisProfessionnel INT PRIMARY KEY AUTO_INCREMENT,
+    idParticulier       INT NOT NULL,
+    idProfessionnel     INT NOT NULL,
+    note                TINYINT NOT NULL,
+    commentaire         VARCHAR(1000),
+    dateCreation        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    dateModification    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    CONSTRAINT chk_avis_professionnel_note CHECK (note >= 1 AND note <= 5),
+    CONSTRAINT uq_avis_professionnel_auteur_cible UNIQUE (idParticulier, idProfessionnel),
+    CONSTRAINT fk_avis_professionnel_particulier
+        FOREIGN KEY (idParticulier) REFERENCES Particulier(idParticulier)
+        ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_avis_professionnel_professionnel
+        FOREIGN KEY (idProfessionnel) REFERENCES Professionnel(idProfessionnel)
+        ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+CREATE INDEX idx_avis_professionnel_professionnel ON AvisProfessionnel(idProfessionnel);
+CREATE INDEX idx_avis_professionnel_note ON AvisProfessionnel(note);
+
+CREATE OR REPLACE VIEW Vue_Note_Moyenne_Produit AS
+SELECT
+    p.idProduit,
+    p.nom,
+    COUNT(ap.idAvisProduit) AS nombreAvis,
+    ROUND(COALESCE(AVG(ap.note), 0), 2) AS noteMoyenne
+FROM Produit p
+LEFT JOIN AvisProduit ap ON ap.idProduit = p.idProduit
+GROUP BY p.idProduit, p.nom;
+
+CREATE OR REPLACE VIEW Vue_Note_Moyenne_Professionnel AS
+SELECT
+    pr.idProfessionnel,
+    u.nom,
+    u.prenom,
+    COUNT(apr.idAvisProfessionnel) AS nombreAvis,
+    ROUND(COALESCE(AVG(apr.note), 0), 2) AS noteMoyenne
+FROM Professionnel pr
+JOIN Utilisateur u ON u.id = pr.id
+LEFT JOIN AvisProfessionnel apr ON apr.idProfessionnel = pr.idProfessionnel
+GROUP BY pr.idProfessionnel, u.nom, u.prenom;
+
+-- -------------------------------------------------------------
+-- 18. Fidelite (particuliers)
+-- -------------------------------------------------------------
+CREATE TABLE FideliteDefi (
+    idDefi            INT PRIMARY KEY AUTO_INCREMENT,
+    code              VARCHAR(60) NOT NULL UNIQUE,
+    titre             VARCHAR(255) NOT NULL,
+    description       VARCHAR(700),
+    pointsRecompense  INT NOT NULL,
+    maxClaims         INT NOT NULL DEFAULT 1,
+    actif             BOOLEAN NOT NULL DEFAULT TRUE,
+    CONSTRAINT chk_defi_points_nonneg CHECK (pointsRecompense >= 0),
+    CONSTRAINT chk_defi_maxclaims_pos CHECK (maxClaims > 0)
+);
+
+CREATE TABLE FideliteDefiProgress (
+    idProgress        INT PRIMARY KEY AUTO_INCREMENT,
+    idParticulier     INT NOT NULL,
+    idDefi            INT NOT NULL,
+    claimsCount       INT NOT NULL DEFAULT 0,
+    dateDernierClaim  DATETIME,
+    createdAt         DATETIME NOT NULL,
+    updatedAt         DATETIME NOT NULL,
+    CONSTRAINT uq_defi_progress UNIQUE (idParticulier, idDefi),
+    CONSTRAINT chk_defi_progress_claims_nonneg CHECK (claimsCount >= 0),
+    CONSTRAINT fk_defi_progress_particulier
+        FOREIGN KEY (idParticulier) REFERENCES Particulier(idParticulier)
+        ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_defi_progress_defi
+        FOREIGN KEY (idDefi) REFERENCES FideliteDefi(idDefi)
+        ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+CREATE TABLE BonAchat (
+    idBon            INT PRIMARY KEY AUTO_INCREMENT,
+    idParticulier    INT NOT NULL,
+    codeBon          VARCHAR(80) NOT NULL UNIQUE,
+    valeurEuros      DECIMAL(10,2) NOT NULL,
+    pointsUtilises   INT NOT NULL,
+    statut           ENUM('actif', 'utilise', 'expire') NOT NULL DEFAULT 'actif',
+    dateCreation     DATETIME NOT NULL,
+    dateUtilisation  DATETIME,
+    dateExpiration   DATETIME,
+    CONSTRAINT chk_bon_valeur_pos CHECK (valeurEuros > 0),
+    CONSTRAINT chk_bon_points_pos CHECK (pointsUtilises > 0),
+    CONSTRAINT fk_bon_achat_particulier
+        FOREIGN KEY (idParticulier) REFERENCES Particulier(idParticulier)
+        ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+CREATE INDEX idx_bon_achat_particulier ON BonAchat(idParticulier);
+CREATE INDEX idx_bon_achat_statut ON BonAchat(statut);
+
+CREATE OR REPLACE VIEW Vue_Fidelite_Particulier AS
+SELECT
+    p.idParticulier,
+    p.id AS idUtilisateur,
+    p.pointsFidelite,
+    COUNT(CASE WHEN b.statut = 'actif' THEN b.idBon END) AS bonsActifs,
+    COALESCE(SUM(CASE WHEN b.statut = 'actif' THEN b.valeurEuros END), 0) AS montantBonsActifs
+FROM Particulier p
+LEFT JOIN BonAchat b ON b.idParticulier = p.idParticulier
+GROUP BY p.idParticulier, p.id, p.pointsFidelite;
+
 -- Vue : produits d'un panier avec détails produit
 CREATE OR REPLACE VIEW Vue_Panier_Produit AS
 SELECT
@@ -911,6 +1042,43 @@ INSERT INTO Favoris_Professionnel_Professionnel (idProfessionnelSource, idProfes
 (3, 1),
 (3, 4),
 (4, 2);
+
+-- -------------------------------------------------------------
+-- 17. Avis produits / professionnels
+-- -------------------------------------------------------------
+INSERT INTO AvisProduit (idParticulier, idProduit, note, commentaire) VALUES
+(1, 1, 5, 'Produits tres frais et conformes.'),
+(1, 11, 4, 'Bon gout, prix un peu eleve.'),
+(2, 6, 5, 'Baguette excellente.'),
+(2, 7, 4, 'Pain complet tres correct.'),
+(3, 12, 5, 'Camembert artisanal au top.'),
+(4, 9, 4, 'Carottes de bonne qualite.');
+
+INSERT INTO AvisProfessionnel (idParticulier, idProfessionnel, note, commentaire) VALUES
+(1, 1, 5, 'Producteur serieux et reactif.'),
+(1, 4, 4, 'Bonne qualite globale.'),
+(2, 2, 5, 'Toujours ponctuel et pro.'),
+(3, 4, 5, 'Tres satisfait de mes commandes.'),
+(4, 1, 4, 'Experience positive.'),
+(4, 3, 4, 'Produits bons et stables.');
+
+-- -------------------------------------------------------------
+-- 18. Fidelite
+-- -------------------------------------------------------------
+INSERT INTO FideliteDefi (code, titre, description, pointsRecompense, maxClaims, actif) VALUES
+('INVITE_1_AMI', 'Inviter un ami', 'Invitez un nouveau client qui cree un compte.', 100, 3, TRUE),
+('PREMIERE_COMMANDE_MOIS', 'Premiere commande du mois', 'Passez au moins une commande dans le mois.', 50, 12, TRUE),
+('PANIER_LOCAL_3', 'Panier local x3', 'Validez 3 achats de produits locaux.', 120, 4, TRUE);
+
+INSERT INTO FideliteDefiProgress (idParticulier, idDefi, claimsCount, dateDernierClaim, createdAt, updatedAt) VALUES
+(1, 1, 1, NOW(), NOW(), NOW()),
+(1, 2, 2, NOW(), NOW(), NOW()),
+(2, 2, 1, NOW(), NOW(), NOW()),
+(3, 3, 1, NOW(), NOW(), NOW());
+
+INSERT INTO BonAchat (idParticulier, codeBon, valeurEuros, pointsUtilises, statut, dateCreation, dateUtilisation, dateExpiration) VALUES
+(1, 'BON-DEMO-001', 5.00, 500, 'actif', NOW(), NULL, DATE_ADD(NOW(), INTERVAL 90 DAY)),
+(3, 'BON-DEMO-002', 10.00, 1000, 'utilise', NOW(), NOW(), DATE_ADD(NOW(), INTERVAL 90 DAY));
 
 -- =============================================================
 --  FIN DU PEUPLEMENT

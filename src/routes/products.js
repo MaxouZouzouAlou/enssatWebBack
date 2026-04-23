@@ -43,10 +43,16 @@ router.get('/', async (req, res, next) => {
 		const [rows] = await db.query(
 			`SELECT
 				p.*,
-				MIN(i.path) AS imagePath
+				MIN(i.path) AS imagePath,
+				MAX(COALESCE(vp.noteMoyenne, 0)) AS noteMoyenneProduit,
+				MAX(COALESCE(vp.nombreAvis, 0)) AS nombreAvisProduit,
+				MAX(COALESCE(vpro.noteMoyenne, 0)) AS noteMoyenneProducteur,
+				MAX(COALESCE(vpro.nombreAvis, 0)) AS nombreAvisProducteur
 			 FROM Produit p
 			 LEFT JOIN Produit_Image pi ON pi.idProduit = p.idProduit
 			 LEFT JOIN Image i ON i.idImage = pi.idImage
+			 LEFT JOIN Vue_Note_Moyenne_Produit vp ON vp.idProduit = p.idProduit
+			 LEFT JOIN Vue_Note_Moyenne_Professionnel vpro ON vpro.idProfessionnel = p.idProfessionnel
 			 WHERE p.visible = TRUE
 			 GROUP BY p.idProduit
 			 ORDER BY p.idProduit
