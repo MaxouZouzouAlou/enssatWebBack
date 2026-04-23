@@ -72,6 +72,8 @@ export function createOrdersRouter({
 	 *             properties:
 	 *               modeLivraison:
 	 *                 type: string
+	 *               voucherId:
+	 *                 type: integer
 	 *     responses:
 	 *       201:
 	 *         description: Order created
@@ -90,7 +92,8 @@ export function createOrdersRouter({
 			const result = await checkoutCartFn({
 				db,
 				owner: context.owner,
-				modeLivraison: req.body?.modeLivraison
+				modeLivraison: req.body?.modeLivraison,
+				voucherId: req.body?.voucherId
 			});
 
 			return res.status(201).json(result);

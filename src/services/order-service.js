@@ -16,6 +16,12 @@ function normalizeModeLivraison(value) {
 	return trimmed ? trimmed.slice(0, 100) : null;
 }
 
+function parseVoucherId(value) {
+	if (value == null || value === '') return null;
+	const parsed = Number(value);
+	return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
 function buildOwnerOrderColumns(owner) {
 	if (owner.column === 'idParticulier') {
 		return { idParticulier: owner.id, idProfessionnel: null };
@@ -63,7 +69,8 @@ function computeLineTotal(item) {
 export async function checkoutCart({
 	db,
 	owner,
-	modeLivraison
+	modeLivraison,
+	voucherId
 }) {
 	const conn = await db.getConnection();
 
@@ -115,9 +122,57 @@ export async function checkoutCart({
 			};
 		});
 
-		const prixTotal = roundCurrency(items.reduce((sum, item) => sum + item.lineTotalTtc, 0));
+		const totalBeforeVoucher = roundCurrency(items.reduce((sum, item) => sum + item.lineTotalTtc, 0));
 		const ownerColumns = buildOwnerOrderColumns(owner);
 		const normalizedModeLivraison = normalizeModeLivraison(modeLivraison);
+		const normalizedVoucherId = parseVoucherId(voucherId);
+		let appliedVoucher = null;
+
+		if (voucherId != null && normalizedVoucherId == null) {
+			throw new CheckoutError(400, 'Identifiant de bon invalide.');
+		}
+
+		if (normalizedVoucherId != null) {
+			if (owner.column !== 'idParticulier') {
+				throw new CheckoutError(403, 'Bon d achat reserve aux comptes particuliers.');
+			}
+
+			const [voucherRows] = await conn.query(
+				`SELECT idBon, idParticulier, codeBon, valeurEuros, statut, dateExpiration
+				 FROM BonAchat
+				 WHERE idBon = ?
+				 LIMIT 1
+				 FOR UPDATE`,
+				[normalizedVoucherId]
+			);
+
+			const voucher = voucherRows[0];
+			if (!voucher || Number(voucher.idParticulier) !== Number(owner.id)) {
+				throw new CheckoutError(404, 'Bon d achat introuvable.');
+			}
+
+			if (voucher.statut !== 'actif') {
+				throw new CheckoutError(409, 'Ce bon d achat n est plus utilisable.');
+			}
+
+			if (voucher.dateExpiration && new Date(voucher.dateExpiration).getTime() <= Date.now()) {
+				await conn.execute(
+					"UPDATE BonAchat SET statut = 'expire' WHERE idBon = ?",
+					[voucher.idBon]
+				);
+				throw new CheckoutError(409, 'Ce bon d achat a expire.');
+			}
+
+			appliedVoucher = {
+				idBon: voucher.idBon,
+				codeBon: voucher.codeBon,
+				valeurEuros: roundCurrency(voucher.valeurEuros)
+			};
+		}
+
+		const prixTotal = roundCurrency(
+			Math.max(totalBeforeVoucher - Number(appliedVoucher?.valeurEuros || 0), 0)
+		);
 
 		const [orderResult] = await conn.execute(
 			`INSERT INTO Commande
@@ -144,6 +199,16 @@ export async function checkoutCart({
 			);
 		}
 
+		if (appliedVoucher) {
+			await conn.execute(
+				`UPDATE BonAchat
+				 SET statut = 'utilise',
+				     dateUtilisation = NOW()
+				 WHERE idBon = ?`,
+				[appliedVoucher.idBon]
+			);
+		}
+
 		await conn.execute('DELETE FROM Panier_Produit WHERE idPanier = ?', [cart.idPanier]);
 
 		await conn.commit();
@@ -153,9 +218,11 @@ export async function checkoutCart({
 				idCommande: orderResult.insertId,
 				idPanier: cart.idPanier,
 				modeLivraison: normalizedModeLivraison,
+				totalBeforeVoucher,
 				prixTotal,
 				status: 'en_attente'
 			},
+			appliedVoucher,
 			items: items.map((item) => ({
 				idProduit: item.idProduit,
 				nom: item.nom,

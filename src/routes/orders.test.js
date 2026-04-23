@@ -284,9 +284,11 @@ test('POST /checkout creates order lines, updates stock, and empties the cart', 
 		idCommande: 44,
 		idPanier: 5,
 		modeLivraison: 'point_relais',
+		totalBeforeVoucher: 5.38,
 		prixTotal: 5.38,
 		status: 'en_attente'
 	});
+	assert.equal(response.body.appliedVoucher, null);
 	assert.deepEqual(response.body.items, [
 		{ idProduit: 6, nom: 'Baguette tradition', quantite: 2, prixTTC: 2.53 },
 		{ idProduit: 9, nom: 'Carottes (1 kg)', quantite: 1.5, prixTTC: 2.85 }
@@ -295,4 +297,161 @@ test('POST /checkout creates order lines, updates stock, and empties the cart', 
 	assert.equal(calls.commit, 1);
 	assert.equal(calls.rollback, 0);
 	assert.equal(calls.release, 1);
+});
+
+test('POST /checkout rejects an expired voucher', async () => {
+	const { calls, connection } = createConnectionMock({
+		queryHandlers: [
+			async () => [[{ idPanier: 5, idParticulier: 10 }]],
+			async () => [[{
+				idPanier: 5,
+				idProduit: 6,
+				quantite: 2,
+				nom: 'Baguette tradition',
+				prix: 1.2,
+				tva: 5.5,
+				reductionProfessionnel: 0,
+				stock: 50,
+				unitaireOuKilo: 1,
+				visible: 1
+			}]],
+			async () => [[{
+				idBon: 33,
+				idParticulier: 10,
+				codeBon: 'BON-TEST',
+				valeurEuros: 5,
+				statut: 'actif',
+				dateExpiration: '2000-01-01T00:00:00.000Z'
+			}]]
+		],
+		executeHandlers: [
+			async (sql, params) => {
+				assert.match(sql, /UPDATE BonAchat SET statut = 'expire'/);
+				assert.deepEqual(params, [33]);
+				return [{ affectedRows: 1 }];
+			}
+		]
+	});
+	const router = createRouter({
+		authClient: createAuthClient({ user: { id: 'auth-user-1' } }),
+		db: createDb(connection)
+	});
+
+	const response = await dispatch(router, {
+		method: 'POST',
+		url: '/checkout',
+		body: { voucherId: 33 }
+	});
+
+	assert.equal(response.statusCode, 409);
+	assert.equal(response.body.error, 'Ce bon d achat a expire.');
+	assert.equal(calls.commit, 0);
+	assert.equal(calls.rollback, 1);
+	assert.equal(calls.release, 1);
+});
+
+test('POST /checkout applies an active voucher during checkout', async () => {
+	const { calls, connection } = createConnectionMock({
+		queryHandlers: [
+			async () => [[{ idPanier: 5, idParticulier: 10 }]],
+			async () => [[
+				{
+					idPanier: 5,
+					idProduit: 6,
+					quantite: 2,
+					nom: 'Baguette tradition',
+					prix: 1.2,
+					tva: 5.5,
+					reductionProfessionnel: 0,
+					stock: 50,
+					unitaireOuKilo: 1,
+					visible: 1
+				},
+				{
+					idPanier: 5,
+					idProduit: 9,
+					quantite: 1.5,
+					nom: 'Carottes (1 kg)',
+					prix: 1.8,
+					tva: 5.5,
+					reductionProfessionnel: 0,
+					stock: 99,
+					unitaireOuKilo: 0,
+					visible: 1
+				}
+			]],
+			async () => [[{
+				idBon: 33,
+				idParticulier: 10,
+				codeBon: 'BON-TEST',
+				valeurEuros: 5,
+				statut: 'actif',
+				dateExpiration: '2999-01-01T00:00:00.000Z'
+			}]]
+		],
+		executeHandlers: [
+			async (sql, params) => {
+				assert.match(sql, /INSERT INTO Commande/);
+				assert.deepEqual(params, ['point_relais', 0.38, 10, null]);
+				return [{ insertId: 45 }];
+			},
+			async (sql, params) => {
+				assert.match(sql, /INSERT INTO LigneCommande/);
+				assert.deepEqual(params, [45, 6, 2, 2.53]);
+				return [{ affectedRows: 1 }];
+			},
+			async (sql, params) => {
+				assert.equal(sql, 'UPDATE Produit SET stock = stock - ? WHERE idProduit = ?');
+				assert.deepEqual(params, [2, 6]);
+				return [{ affectedRows: 1 }];
+			},
+			async (sql, params) => {
+				assert.match(sql, /INSERT INTO LigneCommande/);
+				assert.deepEqual(params, [45, 9, 1.5, 2.85]);
+				return [{ affectedRows: 1 }];
+			},
+			async (sql, params) => {
+				assert.equal(sql, 'UPDATE Produit SET stock = stock - ? WHERE idProduit = ?');
+				assert.deepEqual(params, [1.5, 9]);
+				return [{ affectedRows: 1 }];
+			},
+			async (sql, params) => {
+				assert.match(sql, /UPDATE BonAchat/);
+				assert.deepEqual(params, [33]);
+				return [{ affectedRows: 1 }];
+			},
+			async (sql, params) => {
+				assert.equal(sql, 'DELETE FROM Panier_Produit WHERE idPanier = ?');
+				assert.deepEqual(params, [5]);
+				return [{ affectedRows: 2 }];
+			}
+		]
+	});
+	const router = createRouter({
+		authClient: createAuthClient({ user: { id: 'auth-user-1' } }),
+		db: createDb(connection)
+	});
+
+	const response = await dispatch(router, {
+		method: 'POST',
+		url: '/checkout',
+		body: { modeLivraison: 'point_relais', voucherId: 33 }
+	});
+
+	assert.equal(response.statusCode, 201);
+	assert.deepEqual(response.body.order, {
+		idCommande: 45,
+		idPanier: 5,
+		modeLivraison: 'point_relais',
+		totalBeforeVoucher: 5.38,
+		prixTotal: 0.38,
+		status: 'en_attente'
+	});
+	assert.deepEqual(response.body.appliedVoucher, {
+		idBon: 33,
+		codeBon: 'BON-TEST',
+		valeurEuros: 5
+	});
+	assert.equal(calls.commit, 1);
+	assert.equal(calls.rollback, 0);
 });
