@@ -6,6 +6,13 @@ import { getBusinessProfileByAuthUserId } from '../services/auth-profile-service
 import { geocodeAddress } from '../services/geocoding-service.js';
 import { CheckoutError, checkoutCart, getCheckoutContext, previewCheckout } from '../services/order-service.js';
 import { annotatePickupRoute } from '../services/pickup-route-service.js';
+import {
+	createRecurringOrder,
+	deleteRecurringOrder,
+	executeRecurringOrderById,
+	listRecurringOrdersByOwner,
+	updateRecurringOrder
+} from '../services/recurring-order-service.js';
 
 function getCartOwner(profile) {
 	if (profile?.particulier?.id) {
@@ -41,6 +48,11 @@ function getOwnerWhereClause(owner) {
 	}
 
 	throw new Error('Unsupported order owner.');
+}
+
+function recurringErrorStatus(message = '') {
+	if (/introuvable/i.test(message)) return 404;
+	return 400;
 }
 
 export function createOrdersRouter({
@@ -214,6 +226,78 @@ export function createOrdersRouter({
 				}))
 			});
 		} catch (error) {
+			return next(error);
+		}
+	});
+
+	router.get('/recurring', async (req, res, next) => {
+		try {
+			const context = await requireProfile(req, res);
+			if (!context) return;
+
+			const items = await listRecurringOrdersByOwner(context.owner, { db });
+			return res.json({ items });
+		} catch (error) {
+			return next(error);
+		}
+	});
+
+	router.post('/recurring', async (req, res, next) => {
+		try {
+			const context = await requireProfile(req, res);
+			if (!context) return;
+
+			const created = await createRecurringOrder(context.owner, req.body || {}, { db });
+			return res.status(201).json({ recurringOrder: created });
+		} catch (error) {
+			if (error instanceof Error) {
+				return res.status(recurringErrorStatus(error.message)).json({ error: error.message });
+			}
+			return next(error);
+		}
+	});
+
+	router.patch('/recurring/:idAuto', async (req, res, next) => {
+		try {
+			const context = await requireProfile(req, res);
+			if (!context) return;
+
+			const result = await updateRecurringOrder(context.owner, req.params.idAuto, req.body || {}, { db });
+			return res.json(result);
+		} catch (error) {
+			if (error instanceof Error) {
+				return res.status(recurringErrorStatus(error.message)).json({ error: error.message });
+			}
+			return next(error);
+		}
+	});
+
+	router.delete('/recurring/:idAuto', async (req, res, next) => {
+		try {
+			const context = await requireProfile(req, res);
+			if (!context) return;
+
+			const result = await deleteRecurringOrder(context.owner, req.params.idAuto, { db });
+			return res.json(result);
+		} catch (error) {
+			if (error instanceof Error) {
+				return res.status(recurringErrorStatus(error.message)).json({ error: error.message });
+			}
+			return next(error);
+		}
+	});
+
+	router.post('/recurring/:idAuto/run', async (req, res, next) => {
+		try {
+			const context = await requireProfile(req, res);
+			if (!context) return;
+
+			const result = await executeRecurringOrderById(context.owner, req.params.idAuto, { db });
+			return res.json(result);
+		} catch (error) {
+			if (error instanceof Error) {
+				return res.status(recurringErrorStatus(error.message)).json({ error: error.message });
+			}
 			return next(error);
 		}
 	});

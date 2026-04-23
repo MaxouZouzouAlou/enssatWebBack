@@ -16,6 +16,7 @@ import usersRouter from './routes/users.js';
 import createProductsRouter from './routes/products.js';
 import createProfessionalSalesPointsRouter from './routes/professional-sales-points.js';
 import shoppingCartRouter from './routes/shoppingCart.js';
+import { processDueRecurringOrders } from './services/recurring-order-service.js';
 
 import swaggerJsdoc from 'swagger-jsdoc';
 import swaggerUi from 'swagger-ui-express';
@@ -73,3 +74,23 @@ app.listen(PORT_OPEN, () => {
 	console.log(`Server is running on http://localhost:${PORT_OPEN}`);
 	console.log(`API documentation available at http://localhost:${PORT_OPEN}/api-docs`);
 });
+
+if (process.env.NODE_ENV !== 'test') {
+	const intervalMs = Math.max(Number(process.env.RECURRING_ORDERS_INTERVAL_MS || 60000), 15000);
+	let processing = false;
+
+	setInterval(async () => {
+		if (processing) return;
+		processing = true;
+		try {
+			const results = await processDueRecurringOrders();
+			if (results.some((entry) => !entry.ok)) {
+				console.warn('Recurring orders processing finished with errors:', results.filter((entry) => !entry.ok));
+			}
+		} catch (error) {
+			console.error('Recurring orders processor failed:', error);
+		} finally {
+			processing = false;
+		}
+	}, intervalMs);
+}
