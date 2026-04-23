@@ -3,6 +3,7 @@ import { fromNodeHeaders } from 'better-auth/node';
 import { auth } from '../auth.js';
 import pool from '../server_config/db.js';
 import { getBusinessProfileByAuthUserId } from '../services/auth-profile-service.js';
+import { geocodeAddress } from '../services/geocoding-service.js';
 import { CheckoutError, checkoutCart, getCheckoutContext, previewCheckout } from '../services/order-service.js';
 import { annotatePickupRoute } from '../services/pickup-route-service.js';
 
@@ -47,7 +48,8 @@ export function createOrdersRouter({
 	db = pool,
 	getProfileByAuthUserId = getBusinessProfileByAuthUserId,
 	headersFromNode = fromNodeHeaders,
-	checkoutCartFn = checkoutCart
+	checkoutCartFn = checkoutCart,
+	geocodeAddressFn = geocodeAddress
 } = {}) {
 	const router = express.Router();
 
@@ -115,8 +117,10 @@ export function createOrdersRouter({
 				modeLivraison: req.body?.modeLivraison,
 				modePaiement: req.body?.modePaiement,
 				relayId: req.body?.relayId,
+				adresseLivraison: req.body?.adresseLivraison,
 				voucherId: req.body?.voucherId,
-				pickupAssignments: req.body?.pickupAssignments
+				pickupAssignments: req.body?.pickupAssignments,
+				geocodeAddressFn
 			});
 
 			return res.status(201).json(result);
@@ -136,7 +140,8 @@ export function createOrdersRouter({
 			const result = await getCheckoutContext({
 				db,
 				owner: context.owner,
-				profile: context.profile
+				profile: context.profile,
+				geocodeAddressFn
 			});
 
 			return res.json(result);
@@ -157,12 +162,17 @@ export function createOrdersRouter({
 				modeLivraison: req.body?.modeLivraison,
 				modePaiement: req.body?.modePaiement,
 				relayId: req.body?.relayId,
+				adresseLivraison: req.body?.adresseLivraison,
 				voucherId: req.body?.voucherId,
-				pickupAssignments: req.body?.pickupAssignments
+				pickupAssignments: req.body?.pickupAssignments,
+				geocodeAddressFn
 			});
 
 			return res.json(result);
 		} catch (error) {
+			if (error instanceof CheckoutError) {
+				return res.status(error.status).json({ error: error.message });
+			}
 			return next(error);
 		}
 	});

@@ -46,6 +46,7 @@ app.use(cors({
 }));
 
 app.use('/api/auth', authProfileRouter);
+app.use('/api/account', authProfileRouter);
 app.all('/api/auth/*', toNodeHandler(auth));
 
 app.use(express.json());

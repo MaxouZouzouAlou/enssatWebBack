@@ -56,6 +56,28 @@ export function annotatePickupRoute(stops) {
 	}));
 }
 
+function annotatePickupRouteFromOrigin(stops, originCoordinates) {
+	const origin = toCoordinatePair(originCoordinates);
+	if (!origin) return annotatePickupRoute(stops);
+
+	let totalDistanceKm = 0;
+
+	return stops.map((stop, index) => {
+		const previousCoordinates = index === 0 ? origin : stops[index - 1].coordinates;
+		const legDistanceKm = roundDistance(haversineDistanceKm(previousCoordinates, stop.coordinates));
+		totalDistanceKm += legDistanceKm;
+
+		return {
+			...stop,
+			legDistanceKm
+		};
+	}).map((stop, index, array) => ({
+		...stop,
+		stopNumber: index + 1,
+		totalDistanceKm: index === array.length - 1 ? roundDistance(totalDistanceKm) : undefined
+	}));
+}
+
 function permute(values) {
 	if (values.length <= 1) return [values];
 
@@ -98,18 +120,21 @@ function nearestNeighbourRoute(stops, startIndex) {
 	return orderedIndexes.map((index) => stops[index]);
 }
 
-export function computeOptimalPickupRoute(stops) {
+export function computeOptimalPickupRoute(stops, { originCoordinates = null } = {}) {
 	if (!Array.isArray(stops) || stops.length === 0) {
 		return {
 			stops: [],
-			totalDistanceKm: 0
+			totalDistanceKm: 0,
+			originCoordinates: toCoordinatePair(originCoordinates)
 		};
 	}
 
 	if (stops.length === 1) {
+		const routeStops = annotatePickupRouteFromOrigin(stops, originCoordinates);
 		return {
-			stops: annotatePickupRoute(stops),
-			totalDistanceKm: 0
+			stops: routeStops,
+			totalDistanceKm: routeStops[routeStops.length - 1]?.totalDistanceKm ?? 0,
+			originCoordinates: toCoordinatePair(originCoordinates)
 		};
 	}
 
@@ -118,7 +143,7 @@ export function computeOptimalPickupRoute(stops) {
 
 	if (stops.length <= 8) {
 		for (const permutation of permute(stops)) {
-			const routeStops = annotatePickupRoute(permutation);
+			const routeStops = annotatePickupRouteFromOrigin(permutation, originCoordinates);
 			const totalDistanceKm = routeStops[routeStops.length - 1]?.totalDistanceKm ?? 0;
 			if (totalDistanceKm < bestDistance) {
 				bestDistance = totalDistanceKm;
@@ -128,7 +153,7 @@ export function computeOptimalPickupRoute(stops) {
 	} else {
 		for (let startIndex = 0; startIndex < stops.length; startIndex += 1) {
 			const candidate = nearestNeighbourRoute(stops, startIndex);
-			const routeStops = annotatePickupRoute(candidate);
+			const routeStops = annotatePickupRouteFromOrigin(candidate, originCoordinates);
 			const totalDistanceKm = routeStops[routeStops.length - 1]?.totalDistanceKm ?? 0;
 			if (totalDistanceKm < bestDistance) {
 				bestDistance = totalDistanceKm;
@@ -138,8 +163,9 @@ export function computeOptimalPickupRoute(stops) {
 	}
 
 	return {
-		stops: bestRoute || annotatePickupRoute(stops),
-		totalDistanceKm: roundDistance(bestDistance === Number.POSITIVE_INFINITY ? 0 : bestDistance)
+		stops: bestRoute || annotatePickupRouteFromOrigin(stops, originCoordinates),
+		totalDistanceKm: roundDistance(bestDistance === Number.POSITIVE_INFINITY ? 0 : bestDistance),
+		originCoordinates: toCoordinatePair(originCoordinates)
 	};
 }
 
