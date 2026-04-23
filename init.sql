@@ -205,23 +205,14 @@ CREATE TABLE Produit (
     reductionProfessionnel DECIMAL(5,2)  NOT NULL DEFAULT 0,
     stock                  FLOAT(8,3)    NOT NULL DEFAULT 0,
     visible                BOOLEAN       NOT NULL DEFAULT TRUE,
+    idImage                INT,
     CONSTRAINT fk_produit_professionnel
         FOREIGN KEY (idProfessionnel) REFERENCES Professionnel(idProfessionnel)
         ON DELETE CASCADE ON UPDATE CASCADE,
     CONSTRAINT chk_produit_prix_nonneg       CHECK (prix >= 0),
     CONSTRAINT chk_produit_tva_range         CHECK (tva >= 0 AND tva <= 100),
     CONSTRAINT chk_produit_reduction_range   CHECK (reductionProfessionnel >= 0 AND reductionProfessionnel <= 100),
-    CONSTRAINT chk_produit_stock_nonneg      CHECK (stock >= 0)
-);
-
--- Produit Possède Image (0..* -- 0..*)
-CREATE TABLE Produit_Image (
-    idProduit INT NOT NULL,
-    idImage   INT NOT NULL,
-    PRIMARY KEY (idProduit, idImage),
-    CONSTRAINT fk_pi_produit
-        FOREIGN KEY (idProduit) REFERENCES Produit(idProduit)
-        ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT chk_produit_stock_nonneg      CHECK (stock >= 0),
     CONSTRAINT fk_pi_image
         FOREIGN KEY (idImage) REFERENCES Image(idImage)
         ON DELETE CASCADE ON UPDATE CASCADE
