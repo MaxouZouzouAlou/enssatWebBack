@@ -126,7 +126,8 @@ function handleAuthError(error, res) {
 		return res.status(409).json({ error: 'Une donnee existe deja avec ces informations.' });
 	}
 
-	console.error('Auth error:', error.message);
+	console.error('Auth error:', error);
+	if (error && error.stack) console.error(error.stack);
 	return res.status(500).json({ error: 'Erreur serveur.' });
 }
 
