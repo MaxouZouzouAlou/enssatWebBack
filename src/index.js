@@ -8,6 +8,7 @@ import authProfileRouter from './routes/auth-profile.js';
 import incidentsRouter from './routes/incidents.js';
 import loyaltyRouter from './routes/loyalty.js';
 import createOrdersRouter from './routes/orders.js';
+import mapRouter from './routes/map.js';
 import professionnelsRouter from './routes/professionnels.js';
 import reviewsRouter from './routes/reviews.js';
 import usersRouter from './routes/users.js';
@@ -54,6 +55,8 @@ app.use('/loyalty', loyaltyRouter);
 app.use('/orders', createOrdersRouter());
 app.use('/products', createProductsRouter());
 app.use('/reviews', reviewsRouter);
+app.use('/map', mapRouter);
+app.use('/products', createProductsRouter());
 app.use('/shoppingCart', shoppingCartRouter);
 
 app.use((err, req, res, next) => {
