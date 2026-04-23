@@ -177,6 +177,7 @@ router.post('/challenges/:code/claim', requireParticulier, async (req, res, next
       'SELECT pointsFidelite FROM Particulier WHERE idParticulier = ? LIMIT 1',
       [particulierId]
     );
+    const updatedBalance = Number(particulier?.pointsFidelite || 0);
 
     await conn.commit();
 
@@ -186,7 +187,7 @@ router.post('/challenges/:code/claim', requireParticulier, async (req, res, next
         titre: challenge.titre,
         pointsRecompense: Number(challenge.pointsRecompense || 0),
       },
-      pointsFidelite: Number(particulier?.pointsFidelite || 0),
+      pointsFidelite: updatedBalance,
     });
   } catch (error) {
     await conn.rollback();
@@ -248,12 +249,13 @@ router.post('/redeem-voucher', requireParticulier, async (req, res, next) => {
       'SELECT pointsFidelite FROM Particulier WHERE idParticulier = ? LIMIT 1',
       [particulierId]
     );
+    const updatedBalance = Number(updatedRows[0]?.pointsFidelite || 0);
 
     await conn.commit();
 
     return res.status(201).json({
       voucher: voucherRows[0],
-      pointsFidelite: Number(updatedRows[0]?.pointsFidelite || 0),
+      pointsFidelite: updatedBalance,
     });
   } catch (error) {
     await conn.rollback();

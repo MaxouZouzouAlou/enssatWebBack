@@ -2,7 +2,6 @@ import express from 'express';
 import dotenv from 'dotenv';
 import { toNodeHandler } from 'better-auth/node';
 import { auth } from './auth.js';
-import { seedSuperAdmin } from './seed/superadmin.js';
 import cors from 'cors';
 
 import authProfileRouter from './routes/auth-profile.js';
@@ -63,8 +62,7 @@ app.use((err, req, res, next) => {
 	return res.status(500).json({ error: 'Erreur serveur.' });
 });
 
-app.listen(PORT_OPEN, async () => {
+app.listen(PORT_OPEN, () => {
 	console.log(`Server is running on http://localhost:${PORT_OPEN}`);
 	console.log(`API documentation available at http://localhost:${PORT_OPEN}/api-docs`);
-	await seedSuperAdmin().catch(err => console.error('❌ Erreur seed superadmin :', err.message));
 });

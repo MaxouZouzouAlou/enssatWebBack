@@ -233,7 +233,7 @@ CREATE TABLE Produit_Image (
 CREATE TABLE LieuVente (
     idLieu    INT          PRIMARY KEY AUTO_INCREMENT,
     horaires  VARCHAR(500),
-    typeLieu  VARCHAR(100),
+    nom  VARCHAR(100),
     adresse_ligne VARCHAR(255),
     code_postal   VARCHAR(10),
     ville         VARCHAR(100)
@@ -257,7 +257,7 @@ CREATE TABLE Entreprise_LieuVente (
 -- -------------------------------------------------------------
 CREATE TABLE PointRelais (
     idRelais  INT          PRIMARY KEY AUTO_INCREMENT,
-    typeLieu  VARCHAR(100),
+    nom  VARCHAR(100),
     adresse_ligne VARCHAR(255),
     code_postal   VARCHAR(10),
     ville         VARCHAR(100)
@@ -762,323 +762,130 @@ JOIN Produit p ON pp.idProduit = p.idProduit;
 --  PEUPLEMENT DE LA BASE localzh
 -- =============================================================
 
--- -------------------------------------------------------------
--- 1. SuperAdmin
--- -------------------------------------------------------------
-INSERT INTO SuperAdmin (idAdmin) VALUES
-(1),
-(2);
+-- Better Auth : utilisateurs
+INSERT INTO `user` (`id`, `name`, `email`, `emailVerified`, `role`, `image`, `accountType`, `firstName`, `lastName`, `createdAt`, `updatedAt`) VALUES
+('Zd4kfip6or78ukt2lHV5BObQGUJ0h4Kl', 'Testeur Test',  'testparticulier1@gmail.com',              1, 'user', NULL, 'particulier',   'Testeur', 'Test',   '2026-04-23 09:02:41', '2026-04-23 09:03:03'),
+('YGrii7v7iKcdvjXEznpuus97uVFcjugJ', 'Vendeur Test',  'testprofessionnel1@gmail.com',   1, 'user', NULL, 'professionnel', 'Vendeur', 'Test',   '2026-04-23 09:18:07', '2026-04-23 09:18:15'),
+('Qp7Hn2Lm9Xc4Vb1Ts8Kd5Rj3Wy6Uf0Za', 'Maraicher Test', 'testprofessionnel2@gmail.com',  1, 'user', NULL, 'professionnel', 'Maraicher', 'Test', '2026-04-23 09:18:07', '2026-04-23 09:18:15'),
+('Bn4Rt8Yp1Lk6Jm3Nh0Vf5Dc2Xs9Qa7We', 'Primeur Test',   'testprofessionnel3@gmail.com',  1, 'user', NULL, 'professionnel', 'Primeur', 'Test',   '2026-04-23 09:18:07', '2026-04-23 09:18:15'),
+('Hu3Ji7Ko1Lp9Mn5Bv2Cx8Dz4Sr6Ta0Ye', 'Artisan Test',   'testprofessionnel4@gmail.com',  1, 'user', NULL, 'professionnel', 'Artisan', 'Test',   '2026-04-23 09:18:07', '2026-04-23 09:18:15'),
+('Te5Yu1Io9Pa3Sd7Fg2Hj6Kl8Zx4Cv0Bn', 'Eleveur Test',   'testprofessionnel5@gmail.com',  1, 'user', NULL, 'professionnel', 'Eleveur', 'Test',   '2026-04-23 09:18:07', '2026-04-23 09:18:15'),
+('Mi2No6Pq0Rs4Tu8Vw1Xy5Za9Bc3De7Fg', 'Boulanger Test', 'testprofessionnel6@gmail.com',  1, 'user', NULL, 'professionnel', 'Boulanger', 'Test', '2026-04-23 09:18:07', '2026-04-23 09:18:15'),
+('Gh8Jk2Lm6Np0Qr4St9Uv3Wx7Yz1Ab5Cd', 'Brasseur Test',  'testprofessionnel7@gmail.com',  1, 'user', NULL, 'professionnel', 'Brasseur', 'Test',  '2026-04-23 09:18:07', '2026-04-23 09:18:15');
 
--- -------------------------------------------------------------
--- 2. Utilisateur
--- -------------------------------------------------------------
-INSERT INTO Utilisateur (id, type_utilisateur, nom, prenom, email, num_telephone, adresse_ligne, code_postal, ville, idAdmin) VALUES
-(1,  'superadmin',    'Dupont',    'Alice',     'alice.dupont@localzh.fr',       '0600000001', '1 Rue de l\'Admin',      '35000', 'Rennes',     1),
-(2,  'superadmin',    'Martin',    'Bernard',   'bernard.martin@localzh.fr',    '0600000002', '2 Rue de l\'Admin',      '35000', 'Rennes',     2),
-(3,  'professionnel', 'Leroy',     'Claire',    'claire.leroy@fermebio-leroy.fr', '0611223344', '12 Rue des Champs',     '35000', 'Rennes',     NULL),
-(4,  'professionnel', 'Moreau',    'David',     'david.moreau@boulangerie-moreau.fr', '0622334455', '5 Place du Marché', '35200', 'Rennes', NULL),
-(5,  'professionnel', 'Simon',     'Emma',      'emma.simon@maraichere-simon.fr','0633445566', '8 Allée des Jardins',    '35700', 'Rennes',     NULL),
-(6,  'particulier',   'Laurent',   'François',  'francois.laurent@email.fr',    '0655667788', '14 Rue du Bois',         '35000', 'Rennes',     NULL),
-(7,  'particulier',   'Thomas',    'Gabrielle', 'gabrielle.thomas@email.fr',    '0666778899', '22 Avenue de la Paix',   '35200', 'Rennes',     NULL),
-(8,  'particulier',   'Richard',   'Hugo',      'hugo.richard@email.fr',        '0677889900', '7 Boulevard du Port',   '35400', 'Saint-Malo', NULL),
-(9,  'particulier',   'Petit',     'Isabelle',  'isabelle.petit@email.fr',      '0688990011', '33 Chemin des Lilas',   '35700', 'Rennes',     NULL),
-(10, 'professionnel', 'Girard',    'Julien',    'julien.girard@fromagerie-girard.fr', '0644556677', '3 Impasse du Moulin', '35800', 'Dinard', NULL);
+-- Better Auth : comptes (mots de passe hashés)
+INSERT INTO `account` (`id`, `accountId`, `providerId`, `userId`, `accessToken`, `refreshToken`, `idToken`, `accessTokenExpiresAt`, `refreshTokenExpiresAt`, `scope`, `password`, `createdAt`, `updatedAt`) VALUES
+('IdNFDEtsGD7KsJoJ8o22xZXWjrPE45DU', 'Zd4kfip6or78ukt2lHV5BObQGUJ0h4Kl', 'credential', 'Zd4kfip6or78ukt2lHV5BObQGUJ0h4Kl', NULL, NULL, NULL, NULL, NULL, NULL, '8c4548400b2c989c6ef708454aac8226:cc89672727ff497b49367abc8ad29689b782fd7aafa8015be45e7df406eea485444b8ee331c101d56b373be18a08edfbf30a67f4c97266cff1b71feeedb2436d', '2026-04-23 09:02:41', '2026-04-23 09:02:41'),
+('LzRTrX3qJvgRXgicsYEWWEpu9H2G5rox', 'YGrii7v7iKcdvjXEznpuus97uVFcjugJ', 'credential', 'YGrii7v7iKcdvjXEznpuus97uVFcjugJ', NULL, NULL, NULL, NULL, NULL, NULL, 'f6dc03a5329dc37db121c5781fc3194d:4788b30804eff32e996c751595ba68f13fc4671a7a4a6b83c7ea8ec2989a0e68642d9e1fc8f3a143c5761871b698a4eda234533c2096ea4388c01ccfccd17388',  '2026-04-23 09:18:07', '2026-04-23 09:18:07'),
+('Aa1Bb2Cc3Dd4Ee5Ff6Gg7Hh8Ii9Jj0Kk', 'Qp7Hn2Lm9Xc4Vb1Ts8Kd5Rj3Wy6Uf0Za', 'credential', 'Qp7Hn2Lm9Xc4Vb1Ts8Kd5Rj3Wy6Uf0Za', NULL, NULL, NULL, NULL, NULL, NULL, 'f6dc03a5329dc37db121c5781fc3194d:4788b30804eff32e996c751595ba68f13fc4671a7a4a6b83c7ea8ec2989a0e68642d9e1fc8f3a143c5761871b698a4eda234533c2096ea4388c01ccfccd17388', '2026-04-23 09:18:07', '2026-04-23 09:18:07'),
+('Ll9Mm8Nn7Oo6Pp5Qq4Rr3Ss2Tt1Uu0Vv', 'Bn4Rt8Yp1Lk6Jm3Nh0Vf5Dc2Xs9Qa7We', 'credential', 'Bn4Rt8Yp1Lk6Jm3Nh0Vf5Dc2Xs9Qa7We', NULL, NULL, NULL, NULL, NULL, NULL, 'f6dc03a5329dc37db121c5781fc3194d:4788b30804eff32e996c751595ba68f13fc4671a7a4a6b83c7ea8ec2989a0e68642d9e1fc8f3a143c5761871b698a4eda234533c2096ea4388c01ccfccd17388', '2026-04-23 09:18:07', '2026-04-23 09:18:07'),
+('Ww1Xx2Yy3Zz4Aa5Bb6Cc7Dd8Ee9Ff0Gg', 'Hu3Ji7Ko1Lp9Mn5Bv2Cx8Dz4Sr6Ta0Ye', 'credential', 'Hu3Ji7Ko1Lp9Mn5Bv2Cx8Dz4Sr6Ta0Ye', NULL, NULL, NULL, NULL, NULL, NULL, 'f6dc03a5329dc37db121c5781fc3194d:4788b30804eff32e996c751595ba68f13fc4671a7a4a6b83c7ea8ec2989a0e68642d9e1fc8f3a143c5761871b698a4eda234533c2096ea4388c01ccfccd17388', '2026-04-23 09:18:07', '2026-04-23 09:18:07'),
+('Hh0Ii1Jj2Kk3Ll4Mm5Nn6Oo7Pp8Qq9Rr', 'Te5Yu1Io9Pa3Sd7Fg2Hj6Kl8Zx4Cv0Bn', 'credential', 'Te5Yu1Io9Pa3Sd7Fg2Hj6Kl8Zx4Cv0Bn', NULL, NULL, NULL, NULL, NULL, NULL, 'f6dc03a5329dc37db121c5781fc3194d:4788b30804eff32e996c751595ba68f13fc4671a7a4a6b83c7ea8ec2989a0e68642d9e1fc8f3a143c5761871b698a4eda234533c2096ea4388c01ccfccd17388', '2026-04-23 09:18:07', '2026-04-23 09:18:07'),
+('Ss9Tt8Uu7Vv6Ww5Xx4Yy3Zz2Aa1Bb0Cc', 'Mi2No6Pq0Rs4Tu8Vw1Xy5Za9Bc3De7Fg', 'credential', 'Mi2No6Pq0Rs4Tu8Vw1Xy5Za9Bc3De7Fg', NULL, NULL, NULL, NULL, NULL, NULL, 'f6dc03a5329dc37db121c5781fc3194d:4788b30804eff32e996c751595ba68f13fc4671a7a4a6b83c7ea8ec2989a0e68642d9e1fc8f3a143c5761871b698a4eda234533c2096ea4388c01ccfccd17388', '2026-04-23 09:18:07', '2026-04-23 09:18:07'),
+('Dd1Ee2Ff3Gg4Hh5Ii6Jj7Kk8Ll9Mm0Nn', 'Gh8Jk2Lm6Np0Qr4St9Uv3Wx7Yz1Ab5Cd', 'credential', 'Gh8Jk2Lm6Np0Qr4St9Uv3Wx7Yz1Ab5Cd', NULL, NULL, NULL, NULL, NULL, NULL, 'f6dc03a5329dc37db121c5781fc3194d:4788b30804eff32e996c751595ba68f13fc4671a7a4a6b83c7ea8ec2989a0e68642d9e1fc8f3a143c5761871b698a4eda234533c2096ea4388c01ccfccd17388', '2026-04-23 09:18:07', '2026-04-23 09:18:07');
 
--- -------------------------------------------------------------
--- 3. Professionnel
--- -------------------------------------------------------------
-INSERT INTO Professionnel (idProfessionnel, id) VALUES
-(1, 3),
-(2, 4),
-(3, 5),
-(4, 10);
+-- Better Auth : sessions
+INSERT INTO `session` (`id`, `expiresAt`, `token`, `createdAt`, `updatedAt`, `ipAddress`, `userAgent`, `userId`) VALUES
+('6VjT3UPy9HhQKXYfKI6jR4pFSRMT2QRh', '2026-04-30 09:03:03', 'snBXhxKZrAU9Ws0zi6Yt2Aq3HDzCDooj', '2026-04-23 09:03:03', '2026-04-23 09:03:03', '', 'Mozilla/5.0 (X11; Linux x86_64; rv:149.0) Gecko/20100101 Firefox/149.0', 'Zd4kfip6or78ukt2lHV5BObQGUJ0h4Kl'),
+('sLKxmBxWuo5GRgp9okLcqaSXZyG8KGyU', '2026-04-30 09:18:15', 'EXs1YfDSLqOzvUtRITgDTh82DR8sqGvB', '2026-04-23 09:18:15', '2026-04-23 09:18:15', '', 'Mozilla/5.0 (X11; Linux x86_64; rv:149.0) Gecko/20100101 Firefox/149.0', 'YGrii7v7iKcdvjXEznpuus97uVFcjugJ');
 
--- -------------------------------------------------------------
--- SIRET multivalué
--- -------------------------------------------------------------
-INSERT INTO Professionnel_Siret (idProfessionnel, numero_siret) VALUES
-(1, '12345678901234'),
-(1, '12345678905678'),
-(2, '23456789012345'),
-(3, '34567890123456'),
-(4, '45678901234567'),
-(4, '45678901239999');
+-- Utilisateurs métier
+INSERT INTO `Utilisateur` (`id`, `type_utilisateur`, `nom`, `prenom`, `email`, `num_telephone`, `adresse_ligne`, `code_postal`, `ville`, `idAdmin`) VALUES
+(1, 'particulier',   'Test', 'Testeur', 'testparticulier1@gmail.com',            NULL, NULL, NULL, NULL, NULL),
+(2, 'professionnel', 'Test', 'Vendeur',   'testprofessionnel1@gmail.com', NULL, NULL, NULL, NULL, NULL),
+(3, 'professionnel', 'Test', 'Maraicher', 'testprofessionnel2@gmail.com', NULL, NULL, NULL, NULL, NULL),
+(4, 'professionnel', 'Test', 'Primeur',   'testprofessionnel3@gmail.com', NULL, NULL, NULL, NULL, NULL),
+(5, 'professionnel', 'Test', 'Artisan',   'testprofessionnel4@gmail.com', NULL, NULL, NULL, NULL, NULL),
+(6, 'professionnel', 'Test', 'Eleveur',   'testprofessionnel5@gmail.com', NULL, NULL, NULL, NULL, NULL),
+(7, 'professionnel', 'Test', 'Boulanger', 'testprofessionnel6@gmail.com', NULL, NULL, NULL, NULL, NULL),
+(8, 'professionnel', 'Test', 'Brasseur',  'testprofessionnel7@gmail.com', NULL, NULL, NULL, NULL, NULL);
 
--- -------------------------------------------------------------
--- 4. Particulier
--- -------------------------------------------------------------
-INSERT INTO Particulier (idParticulier, id, pointsFidelite) VALUES
-(1, 6, 120),
-(2, 7, 45),
-(3, 8, 200),
-(4, 9, 10);
+-- Particulier
+INSERT INTO `Particulier` (`idParticulier`, `id`, `pointsFidelite`) VALUES (1, 1, 0);
 
--- -------------------------------------------------------------
--- 5. Entreprise
--- -------------------------------------------------------------
-INSERT INTO Entreprise (idEntreprise, nom, siret, adresse_ligne, code_postal, ville) VALUES
-(1, 'Ferme Bio Leroy',          '12345678901234', '12 Rue des Champs',    '35000', 'Rennes'),
-(2, 'Boulangerie Artisanale Moreau', '23456789012345', '5 Place du Marché', '35200', 'Rennes'),
-(3, 'Maraîchère Simon',         '34567890123456', '8 Allée des Jardins',  '35700', 'Rennes'),
-(4, 'Fromagerie Girard',        '45678901234567', '3 Impasse du Moulin',  '35800', 'Dinard');
-
--- Association Professionnel <-> Entreprise
-INSERT INTO Professionnel_Entreprise (idProfessionnel, idEntreprise) VALUES
-(1, 1),
-(2, 2),
-(3, 3),
-(4, 4),
-(1, 3); -- Claire Leroy est aussi associée à la maraîchère Simon
-
--- -------------------------------------------------------------
--- 6. Image
--- -------------------------------------------------------------
-INSERT INTO Image (idImage, path) VALUES
-(1,  '/images/produits/tomates_cerises.jpg'),
-(2,  '/images/produits/courgettes.jpg'),
-(3,  '/images/produits/pain_complet.jpg'),
-(4,  '/images/produits/baguette.jpg'),
-(5,  '/images/produits/fromage_chevre.jpg'),
-(6,  '/images/produits/camembert.jpg'),
-(7,  '/images/produits/carottes.jpg'),
-(8,  '/images/produits/pommes.jpg'),
-(9,  '/images/produits/oeufs.jpg'),
-(10, '/images/produits/miel.jpg');
-
--- -------------------------------------------------------------
--- 7. Produit
--- -------------------------------------------------------------
-INSERT INTO Produit (idProduit, idProfessionnel, nom, nature, unitaireOuKilo, bio, prix, tva, reductionProfessionnel, stock, visible) VALUES
-(1,  1, 'Tomates cerises',     'Légume',      TRUE,  TRUE,  3.50,  5.50, 5.00,  120, TRUE),
-(2,  1, 'Courgettes',          'Légume',      FALSE, TRUE,  2.00,  5.50, 0.00,  80,  TRUE),
-(3,  1, 'Pommes Golden',       'Fruit',       FALSE, FALSE, 2.50,  5.50, 3.00,  99, TRUE),
-(4,  1, 'Œufs fermiers (x6)',  'Viande',      TRUE,  FALSE, 2.80,  5.50, 0.00, 99, TRUE),
-(5,  1, 'Miel de fleurs',      'Autre',       TRUE,  TRUE,  6.00,  5.50, 5.00, 60,  TRUE),
-(6,  2, 'Baguette tradition',  'Boulangerie', TRUE,  FALSE, 1.20,  5.50, 0.00,  50,  TRUE),
-(7,  2, 'Pain complet',        'Boulangerie', TRUE,  FALSE, 2.50,  5.50, 0.00,  30,  TRUE),
-(8,  2, 'Brioche',             'Boulangerie', TRUE,  FALSE, 3.80,  5.50, 0.00, 20, TRUE),
-(9,  3, 'Carottes (1 kg)',     'Légume',      FALSE, TRUE,  1.80,  5.50, 0.00,  99, TRUE),
-(10, 3, 'Salade verte',        'Légume',      TRUE,  TRUE,  1.50,  5.50, 0.00,  80,  TRUE),
-(11, 4, 'Chèvre frais',        'Laitier',     TRUE,  FALSE, 4.50, 20.00, 8.00,  40,  TRUE),
-(12, 4, 'Camembert artisanal', 'Laitier',     TRUE,  FALSE, 5.00, 20.00, 5.00,  35,  TRUE),
-(13, 4, 'Comté 12 mois',       'Laitier',     TRUE,  FALSE, 7.50, 20.00, 10.00, 25,  TRUE),
-(14, 1, 'Courges butternut',   'Légume',      FALSE, TRUE,  3.20,  5.50, 0.00,  60,  TRUE),
-(15, 2, 'Croissant',           'Boulangerie', TRUE,  FALSE, 1.30,  5.50, 0.00, 40, FALSE);
-
--- Produit_Image
-INSERT INTO Produit_Image (idProduit, idImage) VALUES
-(1,  1),
-(2,  2),
-(7,  3),
-(6,  4),
-(11, 5),
-(12, 6),
-(9,  7),
-(3,  8),
-(4,  9),
-(5,  10),
-(1,  9), -- Tomates cerises a deux images
-(11, 6); -- Chèvre frais a deux images
-
--- -------------------------------------------------------------
--- 8. LieuVente
--- -------------------------------------------------------------
-INSERT INTO LieuVente (idLieu, horaires, typeLieu, adresse_ligne, code_postal, ville) VALUES
-(1, 'Mar-Sam 8h-19h',             'Marché',       'Place des Lices',        '35000', 'Rennes'),
-(2, 'Lun-Sam 7h-13h / 15h-19h',   'Boutique',     '5 Place du Marché',      '35200', 'Rennes'),
-(3, 'Mer-Dim 9h-13h',             'Marché',       'Marché de la Poterie',   '35700', 'Rennes'),
-(4, 'Lun-Ven 9h-18h / Sam 9h-13h','Boutique',     '3 Impasse du Moulin',    '35800', 'Dinard'),
-(5, 'Jeu 15h-19h',                'Drive fermier','Zone Artisanale Sud',    '35000', 'Rennes');
-
--- Entreprise_LieuVente
-INSERT INTO Entreprise_LieuVente (idEntreprise, idLieu) VALUES
-(1, 1),
-(1, 3),
-(2, 2),
-(3, 1),
-(3, 3),
-(4, 4),
-(1, 5);
-
--- -------------------------------------------------------------
--- 9. PointRelais
--- -------------------------------------------------------------
-INSERT INTO PointRelais (idRelais, typeLieu, adresse_ligne, code_postal, ville) VALUES
-(1, 'Épicerie',      '10 Rue de Nantes',            '35000', 'Rennes'),
-(2, 'Tabac-Presse',  '22 Boulevard de la Liberté',  '35000', 'Rennes'),
-(3, 'Pharmacie',     '5 Rue des Écoles',            '35700', 'Rennes'),
-(4, 'Épicerie fine', '15 Rue du Commerce',          '35800', 'Dinard');
-
--- -------------------------------------------------------------
--- 10. Panier
--- -------------------------------------------------------------
-INSERT INTO Panier (idPanier, nom, estLivrable, idParticulier, idProfessionnel) VALUES
-(1, 'Panier du weekend',       TRUE,  1,    NULL),
-(2, 'Courses hebdomadaires',   TRUE,  2,    NULL),
-(3, 'Commande restaurant',     TRUE,  NULL, 2),
-(4, 'Provisions fromagerie',   FALSE, NULL, 4),
-(5, 'Liste de saison automne', TRUE,  3,    NULL),
-(6, 'Petit déjeuner',          FALSE, 4,    NULL);
-
--- Panier_Produit
-INSERT INTO Panier_Produit (idPanier, idProduit, quantite) VALUES
-(1, 1,  2),
-(1, 6,  3),
-(1, 11, 1),
-(2, 9,  2),
-(2, 10, 1),
-(2, 7,  2),
-(2, 4,  1),
-(3, 9,  10),
-(3, 1,  5),
-(3, 10, 8),
-(4, 11, 6),
-(4, 12, 4),
-(4, 13, 3),
-(5, 14, 2),
-(5, 12, 1),
-(6, 6,  2),
-(6, 8,  1);
-
--- -------------------------------------------------------------
--- 11. Commande
--- -------------------------------------------------------------
-INSERT INTO Commande (idCommande, dateCommande, modeLivraison, prixTotal, status, idParticulier, idProfessionnel) VALUES
-(1,  '2025-03-01 10:30:00', 'domicile',     24.30, 'livree',     1,    NULL),
-(2,  '2025-03-05 14:15:00', 'point_relais', 15.80, 'livree',     2,    NULL),
-(3,  '2025-03-10 09:00:00', 'lieu_vente',   87.50, 'livree',     NULL, 2),
-(4,  '2025-03-15 11:45:00', 'domicile',     12.60, 'en_cours',   3,    NULL),
-(5,  '2025-03-20 16:00:00', 'point_relais', 45.00, 'en_attente', 1,    NULL),
-(6,  '2025-03-22 08:30:00', 'lieu_vente',   32.40, 'en_attente', NULL, 3),
-(7,  '2025-03-25 13:00:00', 'domicile',     18.90, 'annulee',    4,    NULL),
-(8,  '2025-04-01 10:00:00', 'domicile',     56.75, 'en_cours',   NULL, 4);
-
--- -------------------------------------------------------------
--- 12. LigneCommande
--- -------------------------------------------------------------
-INSERT INTO LigneCommande (idCommande, idProduit, quantite, prixTTC) VALUES
-(1, 1,  2, 7.39),   -- Tomates cerises x2
-(1, 6,  3, 3.81),   -- Baguette x3
-(1, 11, 1, 5.40),   -- Chèvre frais x1
-(1, 9,  2, 3.80),   -- Carottes x2
-(2, 7,  2, 5.28),   -- Pain complet x2
-(2, 10, 3, 4.77),   -- Salade x3
-(2, 4,  2, 5.91),   -- Œufs x2
-(3, 9,  10, 19.02), -- Carottes x10 (pro)
-(3, 1,  5,  18.47), -- Tomates x5 (pro)
-(3, 10, 8,  12.67), -- Salade x8 (pro)
-(4, 6,  4,  5.07),  -- Baguette x4
-(4, 8,  2,  8.02),  -- Brioche x2
-(5, 13, 2,  15.90), -- Comté x2
-(5, 5,  3,  19.08), -- Miel x3
-(6, 9,  20, 38.00), -- Carottes x20 (pro)
-(7, 2,  3,   6.35), -- Courgettes x3 (annulée)
-(7, 14, 2,   6.77), -- Courges x2 (annulée)
-(8, 11, 10, 48.60), -- Chèvre x10 (pro)
-(8, 12, 4,  21.17); -- Camembert x4 (pro)
-
--- -------------------------------------------------------------
--- 13. CommandeAuto
--- -------------------------------------------------------------
-INSERT INTO CommandeAuto (idAuto, idRefCommande, frequence, estActif, prochaineEcheance) VALUES
-(1, 1, 'hebdomadaire',  TRUE,  '2025-04-08'),
-(2, 3, 'mensuelle',     TRUE,  '2025-04-10'),
-(3, 6, 'bi-mensuelle',  FALSE, NULL),
-(4, 8, 'hebdomadaire',  TRUE,  '2025-04-08');
-
--- -------------------------------------------------------------
--- 14. Livraison
--- -------------------------------------------------------------
-INSERT INTO Livraison (idLivraison, idCommande, idParticulier, idProfessionnel, modeLivraison, adresse, idRelais, idLieu) VALUES
-(1, 1, 1, NULL, 'domicile',      '14 Rue du Bois, 35000 Rennes', NULL, NULL),
-(2, 2, 2, NULL, 'point_relais',  NULL, 2, NULL),
-(3, 3, NULL, 2,  'lieu_vente',   NULL, NULL, 2),
-(4, 4, 3, NULL, 'domicile',      '7 Boulevard du Port, 35400 Saint-Malo', NULL, NULL),
-(5, 5, 1, NULL, 'point_relais',  NULL, 1, NULL),
-(6, 6, NULL, 3,  'lieu_vente',   NULL, NULL, 1),
-(7, 7, 4, NULL, 'domicile',      '33 Chemin des Lilas, 35700 Rennes', NULL, NULL),
-(8, 8, NULL, 4,  'lieu_vente',   NULL, NULL, 4);
-
--- -------------------------------------------------------------
--- 15. Favoris
--- -------------------------------------------------------------
-
--- Particulier -> Produit
-INSERT INTO Favoris_Particulier_Produit (idParticulier, idProduit) VALUES
-(1, 1),
-(1, 11),
-(1, 5),
-(2, 6),
-(2, 7),
-(3, 12),
-(3, 13),
-(4, 9),
-(4, 10);
-
--- Particulier -> Professionnel
-INSERT INTO Favoris_Particulier_Professionnel (idParticulier, idProfessionnel) VALUES
-(1, 1),
-(1, 4),
-(2, 2),
-(3, 4),
-(4, 1),
-(4, 3);
-
--- Professionnel -> Produit
-INSERT INTO Favoris_Professionnel_Produit (idProfessionnel, idProduit) VALUES
-(2, 9),
-(2, 1),
-(3, 11),
-(3, 12),
-(4, 1),
-(4, 9);
-
--- Professionnel -> Professionnel (ne peut pas se mettre lui-même)
-INSERT INTO Favoris_Professionnel_Professionnel (idProfessionnelSource, idProfessionnelCible) VALUES
+-- Professionnel
+INSERT INTO `Professionnel` (`idProfessionnel`, `id`) VALUES
 (1, 2),
-(1, 4),
-(2, 1),
 (2, 3),
-(3, 1),
 (3, 4),
-(4, 2);
+(4, 5),
+(5, 6),
+(6, 7),
+(7, 8);
 
--- -------------------------------------------------------------
--- 17. Avis produits / professionnels
--- -------------------------------------------------------------
-INSERT INTO AvisProduit (idParticulier, idProduit, note, commentaire) VALUES
-(1, 1, 5, 'Produits tres frais et conformes.'),
-(1, 11, 4, 'Bon gout, prix un peu eleve.'),
-(2, 6, 5, 'Baguette excellente.'),
-(2, 7, 4, 'Pain complet tres correct.'),
-(3, 12, 5, 'Camembert artisanal au top.'),
-(4, 9, 4, 'Carottes de bonne qualite.');
+INSERT INTO `Professionnel_Siret` (`idProfessionnel`, `numero_siret`) VALUES
+(1, '22300100000001'),
+(1, '22300100000008'),
+(2, '22300100000002'),
+(3, '22300100000003'),
+(4, '22300100000004'),
+(5, '22300100000005'),
+(6, '22300100000006'),
+(7, '22300100000007');
 
-INSERT INTO AvisProfessionnel (idParticulier, idProfessionnel, note, commentaire) VALUES
-(1, 1, 5, 'Producteur serieux et reactif.'),
-(1, 4, 4, 'Bonne qualite globale.'),
-(2, 2, 5, 'Toujours ponctuel et pro.'),
-(3, 4, 5, 'Tres satisfait de mes commandes.'),
-(4, 1, 4, 'Experience positive.'),
-(4, 3, 4, 'Produits bons et stables.');
+-- Entreprise
+INSERT INTO `Entreprise` (`idEntreprise`, `nom`, `siret`, `adresse_ligne`, `code_postal`, `ville`) VALUES
+(1, 'Les fruits de mamie',     '22300100000001', '1 place du Général Leclerc', '22300', 'Lannion'),
+(2, 'Le potager des brumes',   '22300100000002', '12 rue des Hortensias',      '22300', 'Lannion'),
+(3, 'Primeurs de la baie',     '22300100000003', '8 quai d\'Aiguillon',         '22300', 'Lannion'),
+(4, 'Atelier des terroirs',    '22300100000004', '5 rue Jean Savidan',          '22300', 'Lannion'),
+(5, 'Elevage de Kermaria',     '22300100000005', '21 route de Trébeurden',      '22300', 'Lannion'),
+(6, 'Le fournil granit rose',  '22300100000006', '4 rue Saint-Marc',            '22300', 'Lannion'),
+(7, 'Brasserie des embruns',   '22300100000007', '16 avenue de Park Nevez',     '22300', 'Lannion'),
+(8, 'Conserverie du Trégor',   '22300100000008', '3 rue du Port',               '22300', 'Lannion');
 
--- -------------------------------------------------------------
--- 18. Fidelite
--- -------------------------------------------------------------
-INSERT INTO FideliteDefi (code, titre, description, pointsRecompense, maxClaims, actif) VALUES
-('INVITE_1_AMI', 'Inviter un ami', 'Invitez un nouveau client qui cree un compte.', 100, 3, TRUE),
-('PREMIERE_COMMANDE_MOIS', 'Premiere commande du mois', 'Passez au moins une commande dans le mois.', 50, 12, TRUE),
-('PANIER_LOCAL_3', 'Panier local x3', 'Validez 3 achats de produits locaux.', 120, 4, TRUE);
+INSERT INTO `Professionnel_Entreprise` (`idProfessionnel`, `idEntreprise`) VALUES
+(1, 1),
+(1, 8),
+(2, 2),
+(3, 3),
+(4, 4),
+(5, 5),
+(6, 6),
+(7, 7);
 
-INSERT INTO FideliteDefiProgress (idParticulier, idDefi, claimsCount, dateDernierClaim, createdAt, updatedAt) VALUES
-(1, 1, 1, NOW(), NOW(), NOW()),
-(1, 2, 2, NOW(), NOW(), NOW()),
-(2, 2, 1, NOW(), NOW(), NOW()),
-(3, 3, 1, NOW(), NOW(), NOW());
+-- Profils Auth
+INSERT INTO `AuthProfile` (`authUserId`, `accountType`, `particulierId`, `professionnelId`, `entrepriseId`, `createdAt`, `updatedAt`) VALUES
+('Zd4kfip6or78ukt2lHV5BObQGUJ0h4Kl', 'particulier',   1,    NULL, NULL, '2026-04-23 11:02:41', '2026-04-23 11:02:41'),
+('YGrii7v7iKcdvjXEznpuus97uVFcjugJ', 'professionnel', NULL,  1,    1,    '2026-04-23 11:18:07', '2026-04-23 11:18:07'),
+('Qp7Hn2Lm9Xc4Vb1Ts8Kd5Rj3Wy6Uf0Za', 'professionnel', NULL,  2,    2,    '2026-04-23 11:18:07', '2026-04-23 11:18:07'),
+('Bn4Rt8Yp1Lk6Jm3Nh0Vf5Dc2Xs9Qa7We', 'professionnel', NULL,  3,    3,    '2026-04-23 11:18:07', '2026-04-23 11:18:07'),
+('Hu3Ji7Ko1Lp9Mn5Bv2Cx8Dz4Sr6Ta0Ye', 'professionnel', NULL,  4,    4,    '2026-04-23 11:18:07', '2026-04-23 11:18:07'),
+('Te5Yu1Io9Pa3Sd7Fg2Hj6Kl8Zx4Cv0Bn', 'professionnel', NULL,  5,    5,    '2026-04-23 11:18:07', '2026-04-23 11:18:07'),
+('Mi2No6Pq0Rs4Tu8Vw1Xy5Za9Bc3De7Fg', 'professionnel', NULL,  6,    6,    '2026-04-23 11:18:07', '2026-04-23 11:18:07'),
+('Gh8Jk2Lm6Np0Qr4St9Uv3Wx7Yz1Ab5Cd', 'professionnel', NULL,  7,    7,    '2026-04-23 11:18:07', '2026-04-23 11:18:07');
 
-INSERT INTO BonAchat (idParticulier, codeBon, valeurEuros, pointsUtilises, statut, dateCreation, dateUtilisation, dateExpiration) VALUES
-(1, 'BON-DEMO-001', 5.00, 500, 'actif', NOW(), NULL, DATE_ADD(NOW(), INTERVAL 90 DAY)),
-(3, 'BON-DEMO-002', 10.00, 1000, 'utilise', NOW(), NOW(), DATE_ADD(NOW(), INTERVAL 90 DAY));
+-- Paniers
+INSERT INTO `Panier` (`idPanier`, `nom`, `estLivrable`, `idParticulier`, `idProfessionnel`) VALUES
+(1, 'Panier de Testeur',    1, 1,    NULL),
+(2, 'Panier de Testeur',    1, 1,    NULL),
+(3, 'Panier pro de Vendeur', 0, NULL, 1);
+
+-- Points Relais
+INSERT INTO `PointRelais` (`nom`, `adresse_ligne`, `code_postal`, `ville`) VALUES
+('La Poste de Lannion',             'Quai d\'Aiguillon',                    '22300', 'Lannion'),
+('Carrefour City',                  '8 rue des Augustins',                  '22300', 'Lannion'),
+('Bar Tabac Le Vieux Servel',       '5 rue de Kerpabu',                     '22300', 'Lannion'),
+('Accueil E.Leclerc Lannion Centre','Route de Guingamp Saint Elivet',       '22300', 'Lannion'),
+('Consigne Pickup Weldom Lannion',  '38 rue Saint-Marc',                    '22300', 'Lannion');
+
+-- Lieux de Vente
+INSERT INTO `LieuVente` (`nom`, `horaires`, `adresse_ligne`, `code_postal`, `ville`) VALUES
+('Les Halles de Lannion',          'Mar-Sam 8h-13h',          'Place du Miroir',                              '22300', 'Lannion'),
+('Marché de la Mutante',           'Mer 16h-19h',             'Manoir de Trorozec, 8 Rue de Trorozec',        '22300', 'Lannion'),
+('Ferme de Keranod',               'Mar-Ven 16h30-18h30',     '102 Ker an Nod',                               '22300', 'Lannion'),
+('Au Potager de Kervoigen',        'Ven-Sam 9h-12h',          'Chemin de Kervoigen',                          '22300', 'Lannion'),
+('Bergerie de Kroaz Min',          'Mer-Ven 15h-18h',         'Servel',                                       '22300', 'Lannion'),
+('Ferme du Wern',                  'Mar 16h-19h',             'Le Launay',                                    '22300', 'Ploubezre'),
+('La Ferme Bio de Kernéan',        'Ven 17h-19h',             '6 Route de Kernéan',                           '22560', 'Pleumeur-Bodou'),
+('Brasstillerie KanArFoll',        'Mer 16h-19h',             'Pôle Phoenix, Bat B',                          '22560', 'Pleumeur-Bodou'),
+('La Fabrique du Potager',         'Sam 9h30-12h30',          '78 rue de Kernevez',                           '22560', 'Trébeurden'),
+('Ferme du Lanno',                 'Mar-Sam 9h-12h',          '2 Place du Kroajou',                           '22660', 'Trélévern'),
+('Dolmen & Potager',               'Mar 15h-18h, Ven 16h-19h','Ferme de Coat Mez',                            '22660', 'Trévou-Tréguignec'),
+('La ferme végétale de Boiséon',   'Mar-Ven 16h-19h',         '3 Bois Yvon',                                  '22710', 'Penvénan'),
+('La Ferme des Hautes Terres',     'Mar 17h30-19h',           '5 Kercadieu, route de Pors Hir',               '22820', 'Plougrescant'),
+('La Ferme de Keredern',           'Ven 9h-12h, Sam 9h-12h', '14 Lieu-dit Keredern',                         '22220', 'Trédarzec'),
+('Bernard Fay Légumes',            'Lun-Sam 9h-12h30',        '54 rue de la Presqu\'île, Bourg de l\'Armor',  '22610', 'Pleubian');
 
 -- =============================================================
 --  FIN DU PEUPLEMENT

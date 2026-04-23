@@ -65,6 +65,26 @@ router.get('/profile', async (req, res) => {
 
 		let profile = await getBusinessProfileByAuthUserId(session.user.id);
 		if (!profile) {
+			if (session.user.accountType === 'superadmin') {
+				return res.json({
+					session,
+					profile: {
+						authUserId: session.user.id,
+						accountType: 'superadmin',
+						user: {
+							email: session.user.email,
+							name: session.user.name,
+							image: session.user.image || null,
+							emailVerified: Boolean(session.user.emailVerified),
+							nom: session.user.lastName || null,
+							prenom: session.user.firstName || null
+						},
+						particulier: null,
+						client: null,
+						professionnel: null
+					}
+				});
+			}
 			profile = await ensureBusinessProfile(session.user, {
 				accountType: session.user.accountType || 'particulier'
 			});

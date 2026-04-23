@@ -52,6 +52,36 @@ export async function sendAccountVerificationEmail({ user, url }) {
 	});
 }
 
+export async function sendPasswordResetEmail({ user, url }) {
+	const from = process.env.MAIL_FROM || "LOCAL'ZH <no-reply@localzh.local>";
+	const subject = "Réinitialisation de votre mot de passe LOCAL'ZH";
+	const text = [
+		`Bonjour ${user.name || ''}`.trim(),
+		'',
+		'Cliquez sur le lien suivant pour réinitialiser votre mot de passe :',
+		url,
+		'',
+		'Ce lien expire dans 1 heure.',
+		'Si vous n avez pas fait cette demande, ignorez cet email.'
+	].join('\n');
+
+	const html = `
+		<p>Bonjour ${escapeHtml(user.name || '')},</p>
+		<p>Cliquez sur le lien suivant pour réinitialiser votre mot de passe :</p>
+		<p><a href="${escapeHtml(url)}">Réinitialiser mon mot de passe</a></p>
+		<p>Ce lien expire dans 1 heure.</p>
+		<p>Si vous n'avez pas fait cette demande, ignorez cet email.</p>
+	`;
+
+	const transport = getTransport();
+	if (!transport) {
+		console.warn(`Password reset email for ${user.email}: ${url}`);
+		return;
+	}
+
+	await transport.sendMail({ from, to: user.email, subject, text, html });
+}
+
 export async function sendIncidentCreatedEmail({ creator, recipients, ticket }) {
 	if (!recipients.length) return;
 

@@ -128,7 +128,7 @@ export async function assertRegistrationAvailable({ email, accountType, siret })
 
 	if (accountType === 'professionnel') {
 		const [siretRows] = await pool.execute(
-			'SELECT idProfessionnel FROM Professionnel_SIRET WHERE numero_siret = ? LIMIT 1',
+			'SELECT idProfessionnel FROM Professionnel_Siret WHERE numero_siret = ? LIMIT 1',
 			[siret]
 		);
 		if (siretRows.length) {
@@ -224,9 +224,10 @@ async function createProfessionalProfile(conn, { authUserId, email, entreprise, 
 		 VALUES (?, ?, ?, ?, NULL, NULL, NULL, NULL, NULL)`,
 		['professionnel', nom, prenom, email]
 	);
-	const professionnelId = userResult.insertId;
+	const utilisateurId = userResult.insertId;
 
-	await conn.execute('INSERT INTO Professionnel (idProfessionnel) VALUES (?)', [professionnelId]);
+	const [proResult] = await conn.execute('INSERT INTO Professionnel (id) VALUES (?)', [utilisateurId]);
+	const idProfessionnel = proResult.insertId;
 
 	const [existingCompanyRows] = await conn.execute('SELECT idEntreprise FROM Entreprise WHERE siret = ? LIMIT 1', [siret]);
 	let entrepriseId = existingCompanyRows[0]?.idEntreprise;
@@ -238,15 +239,19 @@ async function createProfessionalProfile(conn, { authUserId, email, entreprise, 
 		entrepriseId = companyResult.insertId;
 	}
 
-	await conn.execute('INSERT INTO Professionnel_SIRET (idProfessionnel, numero_siret) VALUES (?, ?)', [
-		professionnelId,
+	await conn.execute('INSERT INTO Professionnel_Siret (idProfessionnel, numero_siret) VALUES (?, ?)', [
+		idProfessionnel,
 		siret
+	]);
+	await conn.execute('INSERT INTO Professionnel_Entreprise (idProfessionnel, idEntreprise) VALUES (?, ?)', [
+		idProfessionnel,
+		entrepriseId
 	]);
 	await conn.execute(
 		`INSERT INTO AuthProfile
 		 (authUserId, accountType, particulierId, professionnelId, entrepriseId, createdAt, updatedAt)
 		 VALUES (?, 'professionnel', NULL, ?, ?, NOW(), NOW())`,
-		[authUserId, professionnelId, entrepriseId]
+		[authUserId, idProfessionnel, entrepriseId]
 	);
 }
 
@@ -298,6 +303,45 @@ export async function getBusinessProfileByAuthUserId(authUserId) {
 
 	if (!rows.length) return null;
 	const row = rows[0];
+
+	let professionalCompanies = [];
+	if (row.professionnelId) {
+		const [companyRows] = await pool.execute(
+			`SELECT
+				e.idEntreprise AS id,
+				e.nom,
+				e.siret,
+				e.adresse_ligne,
+				e.code_postal,
+				e.ville
+			 FROM Professionnel_Entreprise pe
+			 INNER JOIN Entreprise e ON e.idEntreprise = pe.idEntreprise
+			 WHERE pe.idProfessionnel = ?
+			 ORDER BY e.idEntreprise`,
+			[row.professionnelId]
+		);
+
+		professionalCompanies = companyRows.map((company) => ({
+			id: company.id,
+			nom: company.nom,
+			siret: company.siret,
+			adresse_ligne: company.adresse_ligne,
+			code_postal: company.code_postal,
+			ville: company.ville
+		}));
+	}
+
+	const selectedCompany = row.entrepriseId
+		? {
+			id: row.entrepriseId,
+			nom: row.entrepriseNom,
+			siret: row.entrepriseSiret,
+			adresse_ligne: row.entrepriseAdresseLigne,
+			code_postal: row.entrepriseCodePostal,
+			ville: row.entrepriseVille
+		}
+		: (professionalCompanies[0] || null);
+
 	return {
 		authUserId: row.authUserId,
 		accountType: row.accountType,
@@ -341,14 +385,8 @@ export async function getBusinessProfileByAuthUserId(authUserId) {
 				adresse_ligne: row.professionnelAdresseLigne,
 				code_postal: row.professionnelCodePostal,
 				ville: row.professionnelVille,
-				entreprise: {
-					id: row.entrepriseId,
-					nom: row.entrepriseNom,
-					siret: row.entrepriseSiret,
-					adresse_ligne: row.entrepriseAdresseLigne,
-					code_postal: row.entrepriseCodePostal,
-					ville: row.entrepriseVille
-				}
+				entreprise: selectedCompany,
+				entreprises: professionalCompanies
 			}
 			: null
 	};
