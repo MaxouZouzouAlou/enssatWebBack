@@ -7,9 +7,14 @@ import { fromNodeHeaders } from 'better-auth/node';
 import { auth } from '../auth.js';
 import pool from '../server_config/db.js';
 import { getBusinessProfileByAuthUserId } from '../services/auth-profile-service.js';
+import { geocodeAddress } from '../services/geocoding-service.js';
 
-export default function createProductsRouter({ db = pool } = {}) {
-const router = express.Router();
+const CATALOG_SORTS = new Set(['alpha_asc', 'alpha_desc', 'stock_desc', 'proximity']);
+const geocodedAddressCache = new Map();
+
+function normalizeText(value) {
+	return String(value || '').trim();
+}
 
 function parsePositiveInteger(value, fallback, max = 100) {
 	const parsed = Number(value);
@@ -17,20 +22,258 @@ function parsePositiveInteger(value, fallback, max = 100) {
 	return Math.min(parsed, max);
 }
 
+function parseOptionalNumber(value) {
+	if (value == null || value === '') return null;
+	const parsed = Number(value);
+	return Number.isFinite(parsed) ? parsed : null;
+}
+
+function parseBooleanFilter(value) {
+	if (value == null || value === '') return null;
+	if (typeof value === 'boolean') return value;
+	const normalized = String(value).trim().toLowerCase();
+	if (['true', '1', 'oui', 'yes'].includes(normalized)) return true;
+	if (['false', '0', 'non', 'no'].includes(normalized)) return false;
+	return null;
+}
+
+function parseNatureFilters(value) {
+	const rawValues = Array.isArray(value) ? value : [value];
+	return [...new Set(
+		rawValues
+			.flatMap((entry) => String(entry || '').split(','))
+			.map((entry) => entry.trim())
+			.filter(Boolean)
+	)];
+}
+
+function normalizeCatalogSort(sort, fallback = 'alpha_asc') {
+	return CATALOG_SORTS.has(sort) ? sort : fallback;
+}
+
+function normalizeCatalogQuery(query = {}, { fallbackSort = 'alpha_asc' } = {}) {
+	return {
+		page: parsePositiveInteger(query.page, 1, 100000),
+		limit: parsePositiveInteger(query.limit, 9, 30),
+		recherche: normalizeText(query.q || query.recherche),
+		natures: parseNatureFilters(query.natures || query.nature),
+		bio: parseBooleanFilter(query.bio),
+		enStock: parseBooleanFilter(query.enStock),
+		prixMin: parseOptionalNumber(query.prixMin),
+		prixMax: parseOptionalNumber(query.prixMax),
+		sort: normalizeCatalogSort(query.sort, fallbackSort)
+	};
+}
+
+function buildCatalogFilters(filters, { ignoreNature = false } = {}) {
+	const clauses = ['p.visible = TRUE'];
+	const params = [];
+
+	if (filters.recherche) {
+		const pattern = `%${filters.recherche.toLowerCase()}%`;
+		clauses.push(`(
+			LOWER(p.nom) LIKE ?
+			OR LOWER(COALESCE(p.nature, '')) LIKE ?
+			OR LOWER(COALESCE(e.nom, '')) LIKE ?
+		)`);
+		params.push(pattern, pattern, pattern);
+	}
+
+	if (!ignoreNature && filters.natures.length) {
+		const placeholders = filters.natures.map(() => '?').join(', ');
+		clauses.push(`LOWER(COALESCE(p.nature, '')) IN (${placeholders})`);
+		params.push(...filters.natures.map((nature) => nature.toLowerCase()));
+	}
+
+	if (filters.bio === true) {
+		clauses.push('p.bio = TRUE');
+	} else if (filters.bio === false) {
+		clauses.push('COALESCE(p.bio, FALSE) = FALSE');
+	}
+
+	if (filters.enStock === true) {
+		clauses.push('COALESCE(p.stock, 0) > 0');
+	}
+
+	if (filters.prixMin != null) {
+		clauses.push('COALESCE(p.prix, 0) >= ?');
+		params.push(filters.prixMin);
+	}
+
+	if (filters.prixMax != null) {
+		clauses.push('COALESCE(p.prix, 0) <= ?');
+		params.push(filters.prixMax);
+	}
+
+	return {
+		whereClause: clauses.join(' AND '),
+		params
+	};
+}
+
+function buildOrderByClause(sort) {
+	switch (sort) {
+	case 'alpha_desc':
+		return 'LOWER(COALESCE(p.nom, \'\')) DESC, p.idProduit DESC';
+	case 'stock_desc':
+		return 'COALESCE(p.stock, 0) DESC, LOWER(COALESCE(p.nom, \'\')) ASC, p.idProduit ASC';
+	case 'proximity':
+	case 'alpha_asc':
+	default:
+		return 'LOWER(COALESCE(p.nom, \'\')) ASC, p.idProduit ASC';
+	}
+}
+
+function hasCompleteAddress(address) {
+	return Boolean(
+		normalizeText(address?.adresse_ligne) &&
+		normalizeText(address?.code_postal) &&
+		normalizeText(address?.ville)
+	);
+}
+
+function toAddressKey(address) {
+	if (!hasCompleteAddress(address)) return null;
+	return [
+		normalizeText(address.adresse_ligne).toLowerCase(),
+		normalizeText(address.code_postal).toLowerCase(),
+		normalizeText(address.ville).toLowerCase()
+	].join('|');
+}
+
+function resolvePersonalAddress(profile) {
+	if (!profile || profile.accountType !== 'particulier') return null;
+	const address = profile.particulier || profile.client || null;
+	return hasCompleteAddress(address) ? address : null;
+}
+
+function getProductSellerAddress(product) {
+	const address = {
+		adresse_ligne: product.entrepriseAdresseLigne,
+		code_postal: product.entrepriseCodePostal,
+		ville: product.entrepriseVille
+	};
+	return hasCompleteAddress(address) ? address : null;
+}
+
+async function geocodeWithCache(address, geocodeAddressFn) {
+	const key = toAddressKey(address);
+	if (!key || typeof geocodeAddressFn !== 'function') return null;
+	if (geocodedAddressCache.has(key)) return geocodedAddressCache.get(key);
+
+	try {
+		const coordinates = await geocodeAddressFn(address);
+		geocodedAddressCache.set(key, coordinates);
+		return coordinates;
+	} catch {
+		return null;
+	}
+}
+
+function haversineDistanceKm(origin, target) {
+	const toRadians = (value) => (value * Math.PI) / 180;
+	const earthRadiusKm = 6371;
+	const latDelta = toRadians(target.latitude - origin.latitude);
+	const lonDelta = toRadians(target.longitude - origin.longitude);
+	const lat1 = toRadians(origin.latitude);
+	const lat2 = toRadians(target.latitude);
+	const a = Math.sin(latDelta / 2) ** 2
+		+ Math.cos(lat1) * Math.cos(lat2) * Math.sin(lonDelta / 2) ** 2;
+
+	return 2 * earthRadiusKm * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+async function sortProductsByProximity(rows, originCoordinates, geocodeAddressFn) {
+	const enrichedRows = await Promise.all(rows.map(async (row) => {
+		const sellerCoordinates = await geocodeWithCache(getProductSellerAddress(row), geocodeAddressFn);
+		const distanceKm = originCoordinates && sellerCoordinates
+			? Number(haversineDistanceKm(originCoordinates, sellerCoordinates).toFixed(2))
+			: null;
+
+		return {
+			...row,
+			distanceKm
+		};
+	}));
+
+	return enrichedRows.sort((left, right) => {
+		const leftDistance = Number.isFinite(left.distanceKm) ? left.distanceKm : Number.POSITIVE_INFINITY;
+		const rightDistance = Number.isFinite(right.distanceKm) ? right.distanceKm : Number.POSITIVE_INFINITY;
+		if (leftDistance !== rightDistance) return leftDistance - rightDistance;
+
+		const byName = String(left.nom || '').localeCompare(String(right.nom || ''), 'fr', { sensitivity: 'base' });
+		if (byName !== 0) return byName;
+		return Number(left.idProduit || 0) - Number(right.idProduit || 0);
+	});
+}
+
+async function resolveCatalogViewerProfile(req, {
+	getSessionFn,
+	headersFromNode,
+	getProfileByAuthUserId
+}) {
+	try {
+		const session = await getSessionFn({ headers: headersFromNode(req.headers) });
+		if (!session?.user?.id) return null;
+		return await getProfileByAuthUserId(session.user.id);
+	} catch {
+		return null;
+	}
+}
+
+export default function createProductsRouter({
+	db = pool,
+	getSessionFn = async ({ headers }) => auth.api.getSession({ headers }),
+	headersFromNode = fromNodeHeaders,
+	getProfileByAuthUserId = getBusinessProfileByAuthUserId,
+	geocodeAddressFn = geocodeAddress
+} = {}) {
+const router = express.Router();
+
 const PRODUCT_SELECT_SQL = `
 	SELECT
 		p.*,
+		MAX(COALESCE(e.nom, '')) AS entrepriseNom,
+		MAX(COALESCE(e.adresse_ligne, '')) AS entrepriseAdresseLigne,
+		MAX(COALESCE(e.code_postal, '')) AS entrepriseCodePostal,
+		MAX(COALESCE(e.ville, '')) AS entrepriseVille,
 		MIN(i.path) AS imagePath,
 		MAX(COALESCE(vp.noteMoyenne, 0)) AS noteMoyenneProduit,
 		MAX(COALESCE(vp.nombreAvis, 0)) AS nombreAvisProduit,
 		MAX(COALESCE(vpro.noteMoyenne, 0)) AS noteMoyenneProducteur,
 		MAX(COALESCE(vpro.nombreAvis, 0)) AS nombreAvisProducteur
 	 FROM Produit p
+	 LEFT JOIN Entreprise e ON e.idEntreprise = p.idEntreprise
 	 LEFT JOIN Produit_Image pi ON pi.idProduit = p.idProduit
 	 LEFT JOIN Image i ON i.idImage = pi.idImage
 	 LEFT JOIN Vue_Note_Moyenne_Produit vp ON vp.idProduit = p.idProduit
 	 LEFT JOIN Vue_Note_Moyenne_Professionnel vpro ON vpro.idProfessionnel = p.idProfessionnel
 `;
+
+function buildCatalogSelectQuery(whereClause, orderByClause, { paginate = true } = {}) {
+	return `${PRODUCT_SELECT_SQL}
+		WHERE ${whereClause}
+		GROUP BY p.idProduit
+		ORDER BY ${orderByClause}${paginate ? '\n\t\t LIMIT ? OFFSET ?' : ''}`;
+}
+
+async function fetchAvailableNatures(client, filters) {
+	const { whereClause, params } = buildCatalogFilters(filters, { ignoreNature: true });
+	const [rows] = await client.query(
+		`SELECT DISTINCT p.nature
+		 FROM Produit p
+		 LEFT JOIN Entreprise e ON e.idEntreprise = p.idEntreprise
+		 WHERE ${whereClause}
+		 AND p.nature IS NOT NULL
+		 AND TRIM(p.nature) <> ''
+		 ORDER BY p.nature ASC`,
+		params
+	);
+
+	return rows
+		.map((row) => normalizeText(row.nature))
+		.filter(Boolean);
+}
 
 async function fetchProductById(client, idProduit) {
 	const [rows] = await client.query(`${PRODUCT_SELECT_SQL} WHERE p.idProduit = ? GROUP BY p.idProduit`, [idProduit]);
@@ -95,36 +338,67 @@ async function fetchProductsByProfessional(client, idProfessionnel, idEntreprise
  */
 router.get('/', async (req, res, next) => {
 	try {
-		const page = parsePositiveInteger(req.query.page, 1, 100000);
-		const limit = parsePositiveInteger(req.query.limit, 9, 30);
-		const offset = (page - 1) * limit;
-		const [[countRow]] = await db.query('SELECT COUNT(*) AS total FROM Produit WHERE visible = TRUE');
-		const [rows] = await db.query(
-			`SELECT
-				p.*,
-				MIN(i.path) AS imagePath,
-				MAX(COALESCE(vp.noteMoyenne, 0)) AS noteMoyenneProduit,
-				MAX(COALESCE(vp.nombreAvis, 0)) AS nombreAvisProduit,
-				MAX(COALESCE(vpro.noteMoyenne, 0)) AS noteMoyenneProducteur,
-				MAX(COALESCE(vpro.nombreAvis, 0)) AS nombreAvisProducteur
-			 FROM Produit p
-			 LEFT JOIN Produit_Image pi ON pi.idProduit = p.idProduit
-			 LEFT JOIN Image i ON i.idImage = pi.idImage
-			 LEFT JOIN Vue_Note_Moyenne_Produit vp ON vp.idProduit = p.idProduit
-			 LEFT JOIN Vue_Note_Moyenne_Professionnel vpro ON vpro.idProfessionnel = p.idProfessionnel
-			 WHERE p.visible = TRUE
-			 GROUP BY p.idProduit
-			 ORDER BY p.idProduit
-			 LIMIT ? OFFSET ?`,
-			[limit, offset]
-		);
-		const total = Number(countRow?.total || 0);
+		const viewerProfile = await resolveCatalogViewerProfile(req, {
+			getSessionFn,
+			headersFromNode,
+			getProfileByAuthUserId
+		});
+		const personalAddress = resolvePersonalAddress(viewerProfile);
+		const filters = normalizeCatalogQuery(req.query, {
+			fallbackSort: personalAddress ? 'proximity' : 'alpha_asc'
+		});
+		const offset = (filters.page - 1) * filters.limit;
+		const { whereClause, params } = buildCatalogFilters(filters);
+		const availableNatures = await fetchAvailableNatures(db, filters);
+
+		let items = null;
+		let total = 0;
+		let appliedSort = filters.sort;
+		let proximityAvailable = false;
+
+		if (filters.sort === 'proximity' && personalAddress) {
+			const originCoordinates = await geocodeWithCache(personalAddress, geocodeAddressFn);
+			if (originCoordinates) {
+				const [matchingRows] = await db.query(
+					buildCatalogSelectQuery(whereClause, buildOrderByClause('alpha_asc'), { paginate: false }),
+					params
+				);
+				const sortedRows = await sortProductsByProximity(matchingRows, originCoordinates, geocodeAddressFn);
+				total = sortedRows.length;
+				items = sortedRows.slice(offset, offset + filters.limit);
+				proximityAvailable = true;
+			} else {
+				appliedSort = 'alpha_asc';
+			}
+		}
+
+		if (!items) {
+			const [[countRow]] = await db.query(
+				`SELECT COUNT(DISTINCT p.idProduit) AS total
+				 FROM Produit p
+				 LEFT JOIN Entreprise e ON e.idEntreprise = p.idEntreprise
+				 WHERE ${whereClause}`,
+				params
+			);
+			total = Number(countRow?.total || 0);
+
+			const [rows] = await db.query(
+				buildCatalogSelectQuery(whereClause, buildOrderByClause(appliedSort)),
+				[...params, filters.limit, offset]
+			);
+			items = rows;
+		}
+
 		res.json({
-			items: rows,
-			page,
-			limit,
+			items,
+			page: filters.page,
+			limit: filters.limit,
 			total,
-			totalPages: Math.max(1, Math.ceil(total / limit))
+			totalPages: Math.max(1, Math.ceil(total / filters.limit)),
+			sort: filters.sort,
+			sortApplied: appliedSort,
+			proximityAvailable,
+			availableNatures
 		});
 	} catch (err) {
 		next(err);
