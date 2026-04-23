@@ -796,21 +796,6 @@ INSERT INTO Produit (idProduit, idProfessionnel, nom, nature, unitaireOuKilo, bi
 (14, 1, 'Courges butternut',   'Légume',      FALSE, TRUE,  3.20,  5.50, 0.00,  60,  TRUE),
 (15, 2, 'Croissant',           'Boulangerie', TRUE,  FALSE, 1.30,  5.50, 0.00, 40, FALSE);
 
--- Produit_Image
-INSERT INTO Produit_Image (idProduit, idImage) VALUES
-(1,  1),
-(2,  2),
-(7,  3),
-(6,  4),
-(11, 5),
-(12, 6),
-(9,  7),
-(3,  8),
-(4,  9),
-(5,  10),
-(1,  9), -- Tomates cerises a deux images
-(11, 6); -- Chèvre frais a deux images
-
 -- -------------------------------------------------------------
 -- 8. LieuVente
 -- -------------------------------------------------------------
