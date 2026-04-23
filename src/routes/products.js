@@ -184,9 +184,9 @@ router.post('/professionnel/:idProfessionnel', requireProfessionalSession, uploa
 	const nom = body.nomProduit || body.nom || null;
 	const prix = body.prix != null ? Number(body.prix) : null;
 	const nature = body.nature || null;
-	const unitaireOuKilo = body.unitaireOuKilo != null ? (String(body.unitaireOuKilo) === 'true' || body.unitaireOuKilo === '1') : true;
+	const unitaireOuKilo = body.unitaireOuKilo != null ? (String(body.unitaireOuKilo) === 'true' || String(body.unitaireOuKilo) === '1') : true;
 	const stock = body.stock != null ? Number(body.stock) : 0;
-	const bio = body.bio != null ? (String(body.bio) === 'true' || body.bio === '1') : false;
+	const bio = body.bio != null ? (String(body.bio) === 'true' || String(body.bio) === '1') : false;
 	const tva = body.tva != null ? Number(body.tva) : 0;
 	const reductionPro = body.reductionPro != null ? Number(body.reductionPro) : 0;
 
@@ -250,12 +250,12 @@ router.put('/professionnel/:idProfessionnel/:idProduit', requireProfessionalSess
 		nom: body.nomProduit || body.nom || undefined,
 		prix: body.prix != null ? Number(body.prix) : undefined,
 		nature: body.nature || undefined,
-		unitaireOuKilo: body.unitaireOuKilo != null ? (String(body.unitaireOuKilo) === 'true' || body.unitaireOuKilo === '1') : undefined,
+		unitaireOuKilo: body.unitaireOuKilo != null ? (String(body.unitaireOuKilo) === 'true' || String(body.unitaireOuKilo) === '1') : undefined,
 		stock: body.stock != null ? Number(body.stock) : undefined,
-		bio: body.bio != null ? (String(body.bio) === 'true' || body.bio === '1') : undefined,
+		bio: body.bio != null ? (String(body.bio) === 'true' || String(body.bio) === '1') : undefined,
 		tva: body.tva != null ? Number(body.tva) : undefined,
 		reductionProfessionnel: body.reductionPro != null ? Number(body.reductionPro) : undefined,
-		visible: body.visible != null ? (String(body.visible) === 'true' || body.visible === '1') : undefined
+		visible: body.visible != null ? (String(body.visible) === 'true' || String(body.visible) === '1') : undefined
 	};
 
 	const conn = await pool.getConnection();
