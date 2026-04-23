@@ -205,23 +205,14 @@ CREATE TABLE Produit (
     reductionProfessionnel DECIMAL(5,2)  NOT NULL DEFAULT 0,
     stock                  FLOAT(8,3)    NOT NULL DEFAULT 0,
     visible                BOOLEAN       NOT NULL DEFAULT TRUE,
+    idImage                INT,
     CONSTRAINT fk_produit_professionnel
         FOREIGN KEY (idProfessionnel) REFERENCES Professionnel(idProfessionnel)
         ON DELETE CASCADE ON UPDATE CASCADE,
     CONSTRAINT chk_produit_prix_nonneg       CHECK (prix >= 0),
     CONSTRAINT chk_produit_tva_range         CHECK (tva >= 0 AND tva <= 100),
     CONSTRAINT chk_produit_reduction_range   CHECK (reductionProfessionnel >= 0 AND reductionProfessionnel <= 100),
-    CONSTRAINT chk_produit_stock_nonneg      CHECK (stock >= 0)
-);
-
--- Produit Possède Image (0..* -- 0..*)
-CREATE TABLE Produit_Image (
-    idProduit INT NOT NULL,
-    idImage   INT NOT NULL,
-    PRIMARY KEY (idProduit, idImage),
-    CONSTRAINT fk_pi_produit
-        FOREIGN KEY (idProduit) REFERENCES Produit(idProduit)
-        ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT chk_produit_stock_nonneg      CHECK (stock >= 0),
     CONSTRAINT fk_pi_image
         FOREIGN KEY (idImage) REFERENCES Image(idImage)
         ON DELETE CASCADE ON UPDATE CASCADE
@@ -603,6 +594,77 @@ END$$
 
 DELIMITER ;
 
+-- -------------------------------------------------------------
+-- 17. Notation & avis (acheteurs -> produits / producteurs)
+-- -------------------------------------------------------------
+CREATE TABLE AvisProduit (
+    idAvisProduit     INT PRIMARY KEY AUTO_INCREMENT,
+    idParticulier     INT NOT NULL,
+    idProduit         INT NOT NULL,
+    note              TINYINT NOT NULL,
+    commentaire       VARCHAR(1000),
+    dateCreation      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    dateModification  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    CONSTRAINT chk_avis_produit_note
+        CHECK (note >= 1 AND note <= 5),
+    CONSTRAINT uq_avis_produit_auteur_cible
+        UNIQUE (idParticulier, idProduit),
+    CONSTRAINT fk_avis_produit_particulier
+        FOREIGN KEY (idParticulier) REFERENCES Particulier(idParticulier)
+        ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_avis_produit_produit
+        FOREIGN KEY (idProduit) REFERENCES Produit(idProduit)
+        ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+CREATE INDEX idx_avis_produit_produit ON AvisProduit(idProduit);
+CREATE INDEX idx_avis_produit_note ON AvisProduit(note);
+
+CREATE TABLE AvisProfessionnel (
+    idAvisProfessionnel INT PRIMARY KEY AUTO_INCREMENT,
+    idParticulier       INT NOT NULL,
+    idProfessionnel     INT NOT NULL,
+    note                TINYINT NOT NULL,
+    commentaire         VARCHAR(1000),
+    dateCreation        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    dateModification    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    CONSTRAINT chk_avis_professionnel_note
+        CHECK (note >= 1 AND note <= 5),
+    CONSTRAINT uq_avis_professionnel_auteur_cible
+        UNIQUE (idParticulier, idProfessionnel),
+    CONSTRAINT fk_avis_professionnel_particulier
+        FOREIGN KEY (idParticulier) REFERENCES Particulier(idParticulier)
+        ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_avis_professionnel_professionnel
+        FOREIGN KEY (idProfessionnel) REFERENCES Professionnel(idProfessionnel)
+        ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+CREATE INDEX idx_avis_professionnel_professionnel ON AvisProfessionnel(idProfessionnel);
+CREATE INDEX idx_avis_professionnel_note ON AvisProfessionnel(note);
+
+CREATE OR REPLACE VIEW Vue_Note_Moyenne_Produit AS
+SELECT
+    p.idProduit,
+    p.nom,
+    COUNT(ap.idAvisProduit) AS nombreAvis,
+    ROUND(COALESCE(AVG(ap.note), 0), 2) AS noteMoyenne
+FROM Produit p
+LEFT JOIN AvisProduit ap ON ap.idProduit = p.idProduit
+GROUP BY p.idProduit, p.nom;
+
+CREATE OR REPLACE VIEW Vue_Note_Moyenne_Professionnel AS
+SELECT
+    pr.idProfessionnel,
+    u.nom,
+    u.prenom,
+    COUNT(apr.idAvisProfessionnel) AS nombreAvis,
+    ROUND(COALESCE(AVG(apr.note), 0), 2) AS noteMoyenne
+FROM Professionnel pr
+JOIN Utilisateur u ON u.id = pr.id
+LEFT JOIN AvisProfessionnel apr ON apr.idProfessionnel = pr.idProfessionnel
+GROUP BY pr.idProfessionnel, u.nom, u.prenom;
+
 -- Vue : produits d'un panier avec détails produit
 CREATE OR REPLACE VIEW Vue_Panier_Produit AS
 SELECT
@@ -644,7 +706,7 @@ INSERT INTO SuperAdmin (idAdmin) VALUES
 INSERT INTO Utilisateur (id, type_utilisateur, nom, prenom, email, num_telephone, adresse_ligne, code_postal, ville, idAdmin) VALUES
 (1,  'superadmin',    'Dupont',    'Alice',     'alice.dupont@localzh.fr',       '0600000001', '1 Rue de l\'Admin',      '35000', 'Rennes',     1),
 (2,  'superadmin',    'Martin',    'Bernard',   'bernard.martin@localzh.fr',    '0600000002', '2 Rue de l\'Admin',      '35000', 'Rennes',     2),
-(3,  'professionnel', 'Leroy',     'Claire',    'claire.leroy@fermebio-leroy.fr', '0611223344', '12 Rue des Champs',     '35000', 'Rennes',     NULL),
+(3,  'professionnel', 'Leroy',     'Claire',    'claire.leroy@ferme-leroy.fr',  '0611223344', '12 Rue des Champs',      '35000', 'Rennes',     NULL),
 (4,  'professionnel', 'Moreau',    'David',     'david.moreau@boulangerie-moreau.fr', '0622334455', '5 Place du Marché', '35200', 'Rennes', NULL),
 (5,  'professionnel', 'Simon',     'Emma',      'emma.simon@maraichere-simon.fr','0633445566', '8 Allée des Jardins',    '35700', 'Rennes',     NULL),
 (6,  'particulier',   'Laurent',   'François',  'francois.laurent@email.fr',    '0655667788', '14 Rue du Bois',         '35000', 'Rennes',     NULL),
@@ -686,9 +748,9 @@ INSERT INTO Particulier (idParticulier, id, pointsFidelite) VALUES
 -- 5. Entreprise
 -- -------------------------------------------------------------
 INSERT INTO Entreprise (idEntreprise, nom, siret, adresse_ligne, code_postal, ville) VALUES
-(1, 'Ferme Bio Leroy',          '12345678901234', '12 Rue des Champs',    '35000', 'Rennes'),
-(2, 'Boulangerie Artisanale Moreau', '23456789012345', '5 Place du Marché', '35200', 'Rennes'),
-(3, 'Maraîchère Simon',         '34567890123456', '8 Allée des Jardins',  '35700', 'Rennes'),
+(1, 'Ferme Bio Leroy',          '12345678912345', '12 Rue des Champs',    '35000', 'Rennes'),
+(2, 'Boulangerie Artisanale Moreau', '98765432176535', '5 Place du Marché', '35200', 'Rennes'),
+(3, 'Maraîchère Simon',         '76803761369752', '8 Allée des Jardins',  '35700', 'Rennes'),
 (4, 'Fromagerie Girard',        '45678901234567', '3 Impasse du Moulin',  '35800', 'Dinard');
 
 -- Association Professionnel <-> Entreprise
@@ -717,37 +779,22 @@ INSERT INTO Image (idImage, path) VALUES
 -- -------------------------------------------------------------
 -- 7. Produit
 -- -------------------------------------------------------------
-INSERT INTO Produit (idProduit, idProfessionnel, nom, nature, unitaireOuKilo, bio, prix, tva, reductionProfessionnel, stock, visible) VALUES
-(1,  1, 'Tomates cerises',     'Légume',      TRUE,  TRUE,  3.50,  5.50, 5.00,  120, TRUE),
-(2,  1, 'Courgettes',          'Légume',      FALSE, TRUE,  2.00,  5.50, 0.00,  80,  TRUE),
-(3,  1, 'Pommes Golden',       'Fruit',       FALSE, FALSE, 2.50,  5.50, 3.00,  99, TRUE),
-(4,  1, 'Œufs fermiers (x6)',  'Viande',      TRUE,  FALSE, 2.80,  5.50, 0.00, 99, TRUE),
-(5,  1, 'Miel de fleurs',      'Autre',       TRUE,  TRUE,  6.00,  5.50, 5.00, 60,  TRUE),
-(6,  2, 'Baguette tradition',  'Boulangerie', TRUE,  FALSE, 1.20,  5.50, 0.00,  50,  TRUE),
-(7,  2, 'Pain complet',        'Boulangerie', TRUE,  FALSE, 2.50,  5.50, 0.00,  30,  TRUE),
-(8,  2, 'Brioche',             'Boulangerie', TRUE,  FALSE, 3.80,  5.50, 0.00, 20, TRUE),
-(9,  3, 'Carottes (1 kg)',     'Légume',      FALSE, TRUE,  1.80,  5.50, 0.00,  99, TRUE),
-(10, 3, 'Salade verte',        'Légume',      TRUE,  TRUE,  1.50,  5.50, 0.00,  80,  TRUE),
-(11, 4, 'Chèvre frais',        'Laitier',     TRUE,  FALSE, 4.50, 20.00, 8.00,  40,  TRUE),
-(12, 4, 'Camembert artisanal', 'Laitier',     TRUE,  FALSE, 5.00, 20.00, 5.00,  35,  TRUE),
-(13, 4, 'Comté 12 mois',       'Laitier',     TRUE,  FALSE, 7.50, 20.00, 10.00, 25,  TRUE),
-(14, 1, 'Courges butternut',   'Légume',      FALSE, TRUE,  3.20,  5.50, 0.00,  60,  TRUE),
-(15, 2, 'Croissant',           'Boulangerie', TRUE,  FALSE, 1.30,  5.50, 0.00, 40, FALSE);
-
--- Produit_Image
-INSERT INTO Produit_Image (idProduit, idImage) VALUES
-(1,  1),
-(2,  2),
-(7,  3),
-(6,  4),
-(11, 5),
-(12, 6),
-(9,  7),
-(3,  8),
-(4,  9),
-(5,  10),
-(1,  9), -- Tomates cerises a deux images
-(11, 6); -- Chèvre frais a deux images
+INSERT INTO Produit (idProduit, idProfessionnel, nom, nature, unitaireOuKilo, bio, prix, tva, reductionProfessionnel, stock, visible, idImage) VALUES
+(1,  1, 'Tomates cerises',     'Légume',      TRUE,  TRUE,  3.50,  5.50, 5.00,  120, TRUE, 1),
+(2,  1, 'Courgettes',          'Légume',      FALSE, TRUE,  2.00,  5.50, 0.00,  80,  TRUE, 2),
+(3,  1, 'Pommes Golden',       'Fruit',       FALSE, FALSE, 2.50,  5.50, 3.00,  99, TRUE, 8),
+(4,  1, 'Œufs fermiers (x6)',  'Viande',      TRUE,  FALSE, 2.80,  5.50, 0.00, 99, TRUE, 9),
+(5,  1, 'Miel de fleurs',      'Autre',       TRUE,  TRUE,  6.00,  5.50, 5.00, 60,  TRUE, 10),
+(6,  2, 'Baguette tradition',  'Boulangerie', TRUE,  FALSE, 1.20,  5.50, 0.00,  50,  TRUE, 4),
+(7,  2, 'Pain complet',        'Boulangerie', TRUE,  FALSE, 2.50,  5.50, 0.00,  30,  TRUE, 3),
+(8,  2, 'Brioche',             'Boulangerie', TRUE,  FALSE, 3.80,  5.50, 0.00, 20, TRUE, NULL),
+(9,  3, 'Carottes (1 kg)',     'Légume',      FALSE, TRUE,  1.80,  5.50, 0.00,  99, TRUE, 7),
+(10, 3, 'Salade verte',        'Légume',      TRUE,  TRUE,  1.50,  5.50, 0.00,  80,  TRUE, NULL),
+(11, 4, 'Chèvre frais',        'Laitier',     TRUE,  FALSE, 4.50, 20.00, 8.00,  40,  TRUE, 5),
+(12, 4, 'Camembert artisanal', 'Laitier',     TRUE,  FALSE, 5.00, 20.00, 5.00,  35,  TRUE, 6),
+(13, 4, 'Comté 12 mois',       'Laitier',     TRUE,  FALSE, 7.50, 20.00, 10.00, 25,  TRUE, NULL),
+(14, 1, 'Courges butternut',   'Légume',      FALSE, TRUE,  3.20,  5.50, 0.00,  60,  TRUE, NULL),
+(15, 2, 'Croissant',           'Boulangerie', TRUE,  FALSE, 1.30,  5.50, 0.00, 40, FALSE, NULL);
 
 -- -------------------------------------------------------------
 -- 8. LieuVente
@@ -911,6 +958,25 @@ INSERT INTO Favoris_Professionnel_Professionnel (idProfessionnelSource, idProfes
 (3, 1),
 (3, 4),
 (4, 2);
+
+-- -------------------------------------------------------------
+-- 16. Avis produits / producteurs
+-- -------------------------------------------------------------
+INSERT INTO AvisProduit (idParticulier, idProduit, note, commentaire) VALUES
+(1, 1, 5, 'Produits frais et tres bons.'),
+(1, 11, 4, 'Bon fromage, un peu cher.'),
+(2, 6, 5, 'Baguette excellente.'),
+(2, 7, 4, 'Pain complet de qualite.'),
+(3, 12, 5, 'Camembert artisanal au top.'),
+(4, 9, 4, 'Carottes tres correctes.');
+
+INSERT INTO AvisProfessionnel (idParticulier, idProfessionnel, note, commentaire) VALUES
+(1, 1, 5, 'Tres reactif et produits conformes.'),
+(1, 4, 4, 'Bonne qualite globale.'),
+(2, 2, 5, 'Excellent service client.'),
+(3, 4, 5, 'Tres satisfait de mes commandes.'),
+(4, 1, 4, 'Professionnel serieux.'),
+(4, 3, 4, 'Bons produits, livraison rapide.');
 
 -- =============================================================
 --  FIN DU PEUPLEMENT
