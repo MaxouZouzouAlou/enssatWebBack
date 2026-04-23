@@ -65,6 +65,11 @@ function validatePostalCode(codePostal) {
 	}
 }
 
+function nullableTrim(value) {
+	const normalized = trim(value);
+	return normalized ? normalized : null;
+}
+
 export function validateRegistrationPayload(payload) {
 	const accountType = normalizeAccountType(payload.accountType);
 	const email = normalizeEmail(payload.email);
@@ -417,6 +422,142 @@ export async function updatePersonalAddressByAuthUserId(authUserId, payload = {}
 	);
 
 	return getBusinessProfileByAuthUserId(authUserId);
+}
+
+export async function updatePersonalProfileByAuthUserId(authUserId, payload = {}) {
+	const profile = await getBusinessProfileByAuthUserId(authUserId);
+	if (!profile) {
+		throw new ValidationError('Profil introuvable.');
+	}
+
+	const nom = trim(payload.nom ?? profile.user?.nom ?? '');
+	const prenom = trim(payload.prenom ?? profile.user?.prenom ?? '');
+	const email = normalizeEmail(payload.email ?? profile.user?.email ?? '');
+	const numTelephone = nullableTrim(payload.num_telephone ?? profile.particulier?.num_telephone ?? profile.professionnel?.num_telephone ?? '');
+	const adresseLigne = nullableTrim(payload.adresse_ligne ?? profile.particulier?.adresse_ligne ?? profile.professionnel?.adresse_ligne ?? '');
+	const codePostal = nullableTrim(payload.code_postal ?? profile.particulier?.code_postal ?? profile.professionnel?.code_postal ?? '');
+	const ville = nullableTrim(payload.ville ?? profile.particulier?.ville ?? profile.professionnel?.ville ?? '');
+
+	if (!nom || !prenom) {
+		throw new ValidationError('Nom et prenom requis.');
+	}
+	validateName(nom, 'Nom');
+	validateName(prenom, 'Prenom');
+
+	if (!email || !EMAIL_REGEX.test(email)) {
+		throw new ValidationError('Adresse email invalide.');
+	}
+
+	if (codePostal) {
+		validatePostalCode(codePostal);
+	}
+
+	let utilisateurId = null;
+	if (profile.particulier?.id) {
+		const [rows] = await pool.execute(
+			'SELECT id FROM Particulier WHERE idParticulier = ? LIMIT 1',
+			[profile.particulier.id]
+		);
+		utilisateurId = rows[0]?.id || null;
+	}
+	if (!utilisateurId && profile.professionnel?.id) {
+		const [rows] = await pool.execute(
+			'SELECT id FROM Professionnel WHERE idProfessionnel = ? LIMIT 1',
+			[profile.professionnel.id]
+		);
+		utilisateurId = rows[0]?.id || null;
+	}
+
+	if (!utilisateurId) {
+		throw new ValidationError('Utilisateur metier introuvable.');
+	}
+
+	const conn = await pool.getConnection();
+	try {
+		await conn.beginTransaction();
+
+		const [authDuplicateRows] = await conn.execute(
+			'SELECT id FROM `user` WHERE email = ? AND id <> ? LIMIT 1',
+			[email, authUserId]
+		);
+		if (authDuplicateRows.length) {
+			throw new ConflictError('Un compte existe deja avec cette adresse email.');
+		}
+
+		const [metierDuplicateRows] = await conn.execute(
+			'SELECT id FROM Utilisateur WHERE email = ? AND id <> ? LIMIT 1',
+			[email, utilisateurId]
+		);
+		if (metierDuplicateRows.length) {
+			throw new ConflictError('Cette adresse email est deja utilisee.');
+		}
+
+		await conn.execute(
+			`UPDATE \`user\`
+			 SET email = ?, name = ?, firstName = ?, lastName = ?, updatedAt = NOW()
+			 WHERE id = ?`,
+			[email, `${prenom} ${nom}`.trim(), prenom, nom, authUserId]
+		);
+
+		await conn.execute(
+			`UPDATE Utilisateur
+			 SET nom = ?, prenom = ?, email = ?, num_telephone = ?, adresse_ligne = ?, code_postal = ?, ville = ?
+			 WHERE id = ?`,
+			[nom, prenom, email, numTelephone, adresseLigne, codePostal, ville, utilisateurId]
+		);
+
+		await conn.commit();
+	} catch (error) {
+		await conn.rollback();
+		throw error;
+	} finally {
+		conn.release();
+	}
+
+	return getBusinessProfileByAuthUserId(authUserId);
+}
+
+export async function deletePersonalAccountByAuthUserId(authUserId) {
+	const profile = await getBusinessProfileByAuthUserId(authUserId);
+
+	let utilisateurId = null;
+	if (profile?.particulier?.id) {
+		const [rows] = await pool.execute(
+			'SELECT id FROM Particulier WHERE idParticulier = ? LIMIT 1',
+			[profile.particulier.id]
+		);
+		utilisateurId = rows[0]?.id || null;
+	}
+
+	if (!utilisateurId && profile?.professionnel?.id) {
+		const [rows] = await pool.execute(
+			'SELECT id FROM Professionnel WHERE idProfessionnel = ? LIMIT 1',
+			[profile.professionnel.id]
+		);
+		utilisateurId = rows[0]?.id || null;
+	}
+
+	const conn = await pool.getConnection();
+	try {
+		await conn.beginTransaction();
+
+		if (utilisateurId) {
+			await conn.execute('DELETE FROM Utilisateur WHERE id = ?', [utilisateurId]);
+		}
+
+		await conn.execute('DELETE FROM `user` WHERE id = ?', [authUserId]);
+
+		await conn.commit();
+		return { deleted: true };
+	} catch (error) {
+		await conn.rollback();
+		if (error?.code === 'ER_ROW_IS_REFERENCED_2' || error?.errno === 1451) {
+			throw new ConflictError('Suppression impossible: ce compte est encore référencé dans des données historiques.');
+		}
+		throw error;
+	} finally {
+		conn.release();
+	}
 }
 
 function getFirstName(name) {
