@@ -259,7 +259,6 @@ CREATE TABLE PointRelais (
 -- -------------------------------------------------------------
 CREATE TABLE Panier (
     idPanier        INT          PRIMARY KEY AUTO_INCREMENT,
-    nom             VARCHAR(255) NOT NULL,
     estLivrable     BOOLEAN      NOT NULL DEFAULT TRUE,
     idParticulier   INT,
     idProfessionnel INT,
@@ -828,13 +827,13 @@ INSERT INTO PointRelais (idRelais, typeLieu, adresse_ligne, code_postal, ville) 
 -- -------------------------------------------------------------
 -- 10. Panier
 -- -------------------------------------------------------------
-INSERT INTO Panier (idPanier, nom, estLivrable, idParticulier, idProfessionnel) VALUES
-(1, 'Panier du weekend',       TRUE,  1,    NULL),
-(2, 'Courses hebdomadaires',   TRUE,  2,    NULL),
-(3, 'Commande restaurant',     TRUE,  NULL, 2),
-(4, 'Provisions fromagerie',   FALSE, NULL, 4),
-(5, 'Liste de saison automne', TRUE,  3,    NULL),
-(6, 'Petit déjeuner',          FALSE, 4,    NULL);
+INSERT INTO Panier (idPanier, estLivrable, idParticulier, idProfessionnel) VALUES
+(1, TRUE,  1,    NULL),
+(2, TRUE,  2,    NULL),
+(3, TRUE,  NULL, 2),
+(4, FALSE, NULL, 4),
+(5, TRUE,  3,    NULL),
+(6, FALSE, 4,    NULL);
 
 -- Panier_Produit
 INSERT INTO Panier_Produit (idPanier, idProduit, quantite) VALUES
