@@ -233,7 +233,8 @@ test('POST /checkout creates order lines, updates stock, and empties the cart', 
 					unitaireOuKilo: 0,
 					visible: 1
 				}
-			]]
+			]],
+			async () => [[{ pointsFidelite: 42 }]]
 		],
 		executeHandlers: [
 			async (sql, params) => {
@@ -262,6 +263,11 @@ test('POST /checkout creates order lines, updates stock, and empties the cart', 
 				return [{ affectedRows: 1 }];
 			},
 			async (sql, params) => {
+				assert.equal(sql, 'UPDATE Particulier SET pointsFidelite = pointsFidelite + ? WHERE idParticulier = ?');
+				assert.deepEqual(params, [5, 10]);
+				return [{ affectedRows: 1 }];
+			},
+			async (sql, params) => {
 				assert.equal(sql, 'DELETE FROM Panier_Produit WHERE idPanier = ?');
 				assert.deepEqual(params, [5]);
 				return [{ affectedRows: 2 }];
@@ -287,6 +293,10 @@ test('POST /checkout creates order lines, updates stock, and empties the cart', 
 		totalBeforeVoucher: 5.38,
 		prixTotal: 5.38,
 		status: 'en_attente'
+	});
+	assert.deepEqual(response.body.loyalty, {
+		gainedPoints: 5,
+		pointsFidelite: 42
 	});
 	assert.equal(response.body.appliedVoucher, null);
 	assert.deepEqual(response.body.items, [
@@ -387,7 +397,8 @@ test('POST /checkout applies an active voucher during checkout', async () => {
 				valeurEuros: 5,
 				statut: 'actif',
 				dateExpiration: '2999-01-01T00:00:00.000Z'
-			}]]
+			}]],
+			async () => [[{ pointsFidelite: 12 }]]
 		],
 		executeHandlers: [
 			async (sql, params) => {
@@ -451,6 +462,10 @@ test('POST /checkout applies an active voucher during checkout', async () => {
 		idBon: 33,
 		codeBon: 'BON-TEST',
 		valeurEuros: 5
+	});
+	assert.deepEqual(response.body.loyalty, {
+		gainedPoints: 0,
+		pointsFidelite: 12
 	});
 	assert.equal(calls.commit, 1);
 	assert.equal(calls.rollback, 0);

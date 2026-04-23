@@ -22,6 +22,12 @@ function parseVoucherId(value) {
 	return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 }
 
+function computeRewardPoints(totalPaid) {
+	const normalizedTotal = Number(totalPaid || 0);
+	if (!Number.isFinite(normalizedTotal) || normalizedTotal <= 0) return 0;
+	return Math.max(Math.floor(normalizedTotal), 0);
+}
+
 function buildOwnerOrderColumns(owner) {
 	if (owner.column === 'idParticulier') {
 		return { idParticulier: owner.id, idProfessionnel: null };
@@ -173,6 +179,8 @@ export async function checkoutCart({
 		const prixTotal = roundCurrency(
 			Math.max(totalBeforeVoucher - Number(appliedVoucher?.valeurEuros || 0), 0)
 		);
+		const gainedPoints = owner.column === 'idParticulier' ? computeRewardPoints(prixTotal) : 0;
+		let updatedPointsBalance = null;
 
 		const [orderResult] = await conn.execute(
 			`INSERT INTO Commande
@@ -209,6 +217,21 @@ export async function checkoutCart({
 			);
 		}
 
+		if (owner.column === 'idParticulier') {
+			if (gainedPoints > 0) {
+				await conn.execute(
+					'UPDATE Particulier SET pointsFidelite = pointsFidelite + ? WHERE idParticulier = ?',
+					[gainedPoints, owner.id]
+				);
+			}
+
+			const [particulierRows] = await conn.query(
+				'SELECT pointsFidelite FROM Particulier WHERE idParticulier = ? LIMIT 1',
+				[owner.id]
+			);
+			updatedPointsBalance = Number(particulierRows[0]?.pointsFidelite || 0);
+		}
+
 		await conn.execute('DELETE FROM Panier_Produit WHERE idPanier = ?', [cart.idPanier]);
 
 		await conn.commit();
@@ -222,6 +245,12 @@ export async function checkoutCart({
 				prixTotal,
 				status: 'en_attente'
 			},
+			loyalty: owner.column === 'idParticulier'
+				? {
+					gainedPoints,
+					pointsFidelite: updatedPointsBalance
+				}
+				: null,
 			appliedVoucher,
 			items: items.map((item) => ({
 				idProduit: item.idProduit,
@@ -238,4 +267,4 @@ export async function checkoutCart({
 	}
 }
 
-export { CheckoutError };
+export { CheckoutError, computeRewardPoints };

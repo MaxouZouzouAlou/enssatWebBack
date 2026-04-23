@@ -104,37 +104,6 @@ router.get('/me', requireParticulier, async (req, res, next) => {
   }
 });
 
-router.post('/orders/reward', requireParticulier, async (req, res, next) => {
-  try {
-    const particulierId = req.businessProfile.particulier.id;
-    const orderTotal = Number(req.body?.orderTotal || 0);
-
-    if (!Number.isFinite(orderTotal) || orderTotal <= 0) {
-      return res.status(400).json({ error: 'orderTotal invalide.' });
-    }
-
-    const gainedPoints = Math.max(Math.floor(orderTotal), 1);
-
-    await pool.execute(
-      'UPDATE Particulier SET pointsFidelite = pointsFidelite + ? WHERE idParticulier = ?',
-      [gainedPoints, particulierId]
-    );
-
-    const [[particulier]] = await pool.query(
-      'SELECT pointsFidelite FROM Particulier WHERE idParticulier = ? LIMIT 1',
-      [particulierId]
-    );
-
-    return res.status(201).json({
-      gainedPoints,
-      pointsFidelite: Number(particulier?.pointsFidelite || 0),
-      message: `${gainedPoints} point(s) de fidelite ajoutes suite a la commande.`,
-    });
-  } catch (error) {
-    return next(error);
-  }
-});
-
 router.post('/challenges/:code/claim', requireParticulier, async (req, res, next) => {
   const conn = await pool.getConnection();
 
