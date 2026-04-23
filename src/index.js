@@ -16,6 +16,8 @@ import usersRouter from './routes/users.js';
 import createProductsRouter from './routes/products.js';
 import createProfessionalSalesPointsRouter from './routes/professional-sales-points.js';
 import shoppingCartRouter from './routes/shoppingCart.js';
+import superadminRouter from './routes/superadmin.js';
+import notificationsRouter from './routes/notifications.js';
 import { processDueRecurringOrders } from './services/recurring-order-service.js';
 
 import swaggerJsdoc from 'swagger-jsdoc';
@@ -63,6 +65,8 @@ app.use('/products', createProductsRouter());
 app.use('/reviews', reviewsRouter);
 app.use('/map', mapRouter);
 app.use('/shoppingCart', shoppingCartRouter);
+app.use('/superadmin', superadminRouter);
+app.use('/notifications', notificationsRouter);
 
 app.use((err, req, res, next) => {
 	console.error(err);

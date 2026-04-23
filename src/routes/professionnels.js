@@ -51,7 +51,7 @@ async function requireProfessionalSession(req, res, next) {
 		});
 
 		if (!session) {
-			return res.status(401).json({ error: 'Non authentifie.' });
+			return res.status(401).json({ error: 'Non authentifié.' });
 		}
 
 		const profile = await getBusinessProfileByAuthUserId(session.user.id);

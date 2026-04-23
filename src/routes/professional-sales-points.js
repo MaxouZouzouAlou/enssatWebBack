@@ -28,7 +28,7 @@ export function createProfessionalSalesPointsRouter({
 		});
 
 		if (!session) {
-			res.status(401).json({ error: 'Non authentifie.' });
+			res.status(401).json({ error: 'Non authentifié.' });
 			return null;
 		}
 

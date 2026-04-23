@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { Readable } from 'node:stream';
+import { Readable, Writable } from 'node:stream';
 import test from 'node:test';
 import { createOrdersRouter } from './orders.js';
 
@@ -48,29 +48,38 @@ function createRequest(method, url, body) {
 function dispatch(router, { method = 'GET', url, body }) {
 	return new Promise((resolve, reject) => {
 		const req = createRequest(method, url, body);
-		const res = {
-			statusCode: 200,
-			headers: {},
-			setHeader(name, value) {
-				this.headers[name.toLowerCase()] = value;
-			},
-			getHeader(name) {
-				return this.headers[name.toLowerCase()];
-			},
-			status(code) {
-				this.statusCode = code;
-				return this;
-			},
-			json(payload) {
-				this.body = payload;
-				resolve(this);
-				return this;
-			},
-			end(payload) {
-				this.body = payload;
-				resolve(this);
-				return this;
+		const chunks = [];
+		const res = new Writable({
+			write(chunk, _encoding, callback) {
+				chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+				callback();
 			}
+		});
+
+		res.statusCode = 200;
+		res.headers = {};
+		res.setHeader = function setHeader(name, value) {
+			this.headers[name.toLowerCase()] = value;
+		};
+		res.getHeader = function getHeader(name) {
+			return this.headers[name.toLowerCase()];
+		};
+		res.status = function status(code) {
+			this.statusCode = code;
+			return this;
+		};
+		res.json = function json(payload) {
+			this.body = payload;
+			resolve(this);
+			return this;
+		};
+		res.end = function end(payload) {
+			if (payload) {
+				chunks.push(Buffer.isBuffer(payload) ? payload : Buffer.from(payload));
+			}
+			this.body = payload ?? (chunks.length ? Buffer.concat(chunks) : undefined);
+			resolve(this);
+			return this;
 		};
 
 		router.handle(req, res, (err) => {
@@ -153,7 +162,7 @@ test('POST /checkout returns 401 without a session', async () => {
 	});
 
 	assert.equal(response.statusCode, 401);
-	assert.equal(response.body.error, 'Non authentifie.');
+	assert.equal(response.body.error, 'Non authentifié.');
 });
 
 test('GET /checkout/context returns guided checkout data', async () => {
@@ -636,6 +645,7 @@ test('GET /orders returns authenticated order history with payment mode', async 
 			assert.deepEqual(params, [10]);
 			return [[{
 				idCommande: 17,
+				numeroCommandeUtilisateur: 3,
 				dateCommande: '2026-04-23 10:00:00',
 				modeLivraison: 'point_relais',
 				modePaiement: 'carte_bancaire',
@@ -659,6 +669,7 @@ test('GET /orders returns authenticated order history with payment mode', async 
 
 	assert.equal(response.statusCode, 200);
 	assert.equal(response.body.items[0].modePaiement, 'carte_bancaire');
+	assert.equal(response.body.items[0].numeroCommandeUtilisateur, 3);
 });
 
 test('GET /orders/:idCommande returns order detail with delivery and pickup assignment', async () => {
@@ -668,6 +679,7 @@ test('GET /orders/:idCommande returns order detail with delivery and pickup assi
 				assert.deepEqual(params, [33, 10]);
 				return [[{
 					idCommande: 33,
+					numeroCommandeUtilisateur: 7,
 					dateCommande: '2026-04-23 12:00:00',
 					modeLivraison: 'lieu_vente',
 					modePaiement: 'carte_bancaire',
@@ -733,6 +745,7 @@ test('GET /orders/:idCommande returns order detail with delivery and pickup assi
 
 	assert.equal(response.statusCode, 200);
 	assert.equal(response.body.order.modePaiement, 'carte_bancaire');
+	assert.equal(response.body.order.numeroCommandeUtilisateur, 7);
 	assert.equal(response.body.pickupRoute.stops.length, 1);
 	assert.equal(response.body.items[0].selectedLieu.idLieu, 3);
 });
@@ -761,6 +774,11 @@ test('POST /checkout creates an order with relay delivery and payment mode', asy
 				ville: 'Lannion'
 			}]],
 			async () => [[]],
+			async (sql, params) => {
+				assert.match(sql, /ROW_NUMBER\(\) OVER/);
+				assert.deepEqual(params, [10, 44]);
+				return [[{ numeroCommandeUtilisateur: 12 }]];
+			},
 			async () => [[{ pointsFidelite: 42 }]]
 		],
 		executeHandlers: [
@@ -786,7 +804,7 @@ test('POST /checkout creates an order with relay delivery and payment mode', asy
 			},
 			async (sql, params) => {
 				assert.equal(sql, 'UPDATE Particulier SET pointsFidelite = pointsFidelite + ? WHERE idParticulier = ?');
-				assert.deepEqual(params, [6, 10]);
+				assert.deepEqual(params, [3, 10]);
 				return [{ affectedRows: 1 }];
 			},
 			async (sql, params) => {
@@ -814,7 +832,56 @@ test('POST /checkout creates an order with relay delivery and payment mode', asy
 
 	assert.equal(response.statusCode, 201);
 	assert.equal(response.body.order.modePaiement, 'carte_bancaire');
+	assert.equal(response.body.order.numeroCommandeUtilisateur, 12);
 	assert.equal(response.body.order.fraisLivraison, 3.9);
 	assert.equal(calls.commit, 1);
 	assert.equal(calls.rollback, 0);
+});
+
+test('GET /orders/:idCommande/facture.pdf returns a buyer invoice for professional accounts', async () => {
+	const fakeDb = {
+		query: async (sql, params) => {
+			if (sql.includes('WHERE c.idCommande = ?')) {
+				assert.deepEqual(params, [33, 22]);
+				return [[{
+					idCommande: 33,
+					numeroCommandeUtilisateur: 4,
+					dateCommande: '2026-04-23 12:00:00',
+					modeLivraison: 'domicile',
+					modePaiement: 'paypal',
+					prixTotal: 18.75,
+					status: 'confirmee'
+				}]];
+			}
+
+			if (sql.includes('FROM LigneCommande lc')) {
+				assert.deepEqual(params, [33]);
+				return [[
+					{ idProduit: 6, quantite: 2, prixTTC: 5.06, nom: 'Baguette tradition' },
+					{ idProduit: 7, quantite: 1, prixTTC: 8.63, nom: 'Confiture de fraises' }
+				]];
+			}
+
+			throw new Error(`unexpected query: ${sql}`);
+		}
+	};
+
+	const router = createOrdersRouter({
+		authClient: createAuthClient({ user: { id: 'auth-user-1' } }),
+		db: fakeDb,
+		getProfileByAuthUserId: async () => ({
+			accountType: 'professionnel',
+			professionnel: { id: 22 }
+		})
+	});
+
+	const response = await dispatch(router, {
+		method: 'GET',
+		url: '/33/facture.pdf',
+		params: { idCommande: '33' }
+	});
+
+	assert.equal(response.statusCode, 200);
+	assert.equal(response.headers['content-type'], 'application/pdf');
+	assert.match(response.headers['content-disposition'], /facture-commande-33\.pdf/);
 });

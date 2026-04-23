@@ -16,7 +16,7 @@ function buildCombinedAddressLine(address) {
 	const ville = normalizeText(address?.ville);
 
 	if (!adresseLigne || !codePostal || !ville) {
-		throw new GeocodingError('Adresse incomplete pour le geocodage.', 400);
+		throw new GeocodingError('Adresse incomplète pour le géocodage.', 400);
 	}
 
 	return `${adresseLigne}, ${codePostal} ${ville}, France`;
@@ -28,7 +28,7 @@ export function buildGeocodingQuery(address) {
 	const ville = normalizeText(address?.ville);
 
 	if (!adresseLigne || !codePostal || !ville) {
-		throw new GeocodingError('Adresse incomplete pour le geocodage.', 400);
+		throw new GeocodingError('Adresse incomplète pour le géocodage.', 400);
 	}
 
 	return {
@@ -82,7 +82,7 @@ export async function geocodeAddress(address, { fetchImpl = fetch } = {}) {
 		});
 
 		if (!response.ok) {
-			lastResponseError = new GeocodingError('Le service de geocodage est indisponible.', 502);
+			lastResponseError = new GeocodingError('Le service de géocodage est indisponible.', 502);
 			continue;
 		}
 

@@ -147,6 +147,39 @@ test('GET /products applies search and filter query parameters', async () => {
 	assert.match(calls[2].sql, /ORDER BY COALESCE\(p\.stock, 0\) DESC/);
 });
 
+test('GET /products supports popularity sorting based on product ratings', async () => {
+	const calls = [];
+	const fakePool = {
+		query: async (sql, params = []) => {
+			calls.push({ sql, params });
+			if (sql.includes('SELECT DISTINCT p.nature')) return [[{ nature: 'Fruit' }]];
+			if (sql.includes('COUNT(DISTINCT p.idProduit)')) return [[{ total: 2 }]];
+			if (sql.includes('LIMIT ? OFFSET ?')) {
+				return [[
+					{ idProduit: 8, nom: 'Fraises', noteMoyenneProduit: 4.8, nombreAvisProduit: 12, visible: 1 },
+					{ idProduit: 2, nom: 'Pommes', noteMoyenneProduit: 4.6, nombreAvisProduit: 30, visible: 1 }
+				]];
+			}
+			throw new Error(`unexpected query: ${sql}`);
+		}
+	};
+
+	const router = productsRouter({ db: fakePool });
+
+	const res = await invokeRouter(router, {
+		method: 'GET',
+		url: '/?sort=rating_desc',
+		originalUrl: '/products/?sort=rating_desc',
+		headers: {},
+		query: { sort: 'rating_desc' }
+	});
+
+	assert.equal(res.statusCode, 200);
+	assert.equal(res.body.sort, 'rating_desc');
+	assert.equal(res.body.sortApplied, 'rating_desc');
+	assert.match(calls[2].sql, /ORDER BY COALESCE\(vp\.noteMoyenne, 0\) DESC, COALESCE\(vp\.nombreAvis, 0\) DESC/);
+});
+
 test('GET /products sorts by seller proximity for logged-in personal accounts', async () => {
 	const fakePool = {
 		query: async (sql, params = []) => {

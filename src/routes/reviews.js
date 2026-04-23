@@ -12,7 +12,7 @@ async function resolveParticulierSession(req) {
   });
 
   if (!session) {
-    return { error: { status: 401, message: 'Non authentifie.' } };
+    return { error: { status: 401, message: 'Non authentifié.' } };
   }
 
   const profile = await getBusinessProfileByAuthUserId(session.user.id);
@@ -150,48 +150,77 @@ router.get('/professionnels/:idProfessionnel', async (req, res, next) => {
       return res.status(400).json({ error: 'Identifiant professionnel invalide.' });
     }
 
-    const [[summary]] = await pool.query(
+    const [[profileRow]] = await pool.query(
       `SELECT
-          p.idProfessionnel,
-          u.nom,
-          u.prenom,
-          COALESCE(ROUND(AVG(ap.note), 2), 0) AS noteMoyenne,
-          COUNT(ap.idAvisProfessionnel) AS nombreAvis
-       FROM Professionnel p
-       JOIN Utilisateur u ON u.id = p.id
-       LEFT JOIN AvisProfessionnel ap ON ap.idProfessionnel = p.idProfessionnel
-       WHERE p.idProfessionnel = ?
-       GROUP BY p.idProfessionnel, u.nom, u.prenom`,
+          idProfessionnel,
+          idUtilisateur,
+          nom,
+          prenom,
+          email,
+          description,
+          photo,
+          nombreAvis,
+          noteMoyenne
+       FROM Vue_Profil_Professionnel
+       WHERE idProfessionnel = ?
+       LIMIT 1`,
       [idProfessionnel]
     );
 
-    if (!summary) {
+    if (!profileRow) {
       return res.status(404).json({ error: 'Professionnel introuvable.' });
     }
 
-    const [reviews] = await pool.query(
-      `SELECT
-          ap.idAvisProfessionnel,
-          ap.note,
-          ap.commentaire,
-          ap.dateCreation,
-          u.nom,
-          u.prenom
-       FROM AvisProfessionnel ap
-       JOIN Particulier pa ON pa.idParticulier = ap.idParticulier
-       JOIN Utilisateur u ON u.id = pa.id
-       WHERE ap.idProfessionnel = ?
-       ORDER BY ap.dateCreation DESC`,
-      [idProfessionnel]
-    );
+    const [[reviews], [companies]] = await Promise.all([
+      pool.query(
+        `SELECT
+            ap.idAvisProfessionnel,
+            ap.note,
+            ap.commentaire,
+            ap.dateCreation,
+            u.nom,
+            u.prenom
+         FROM AvisProfessionnel ap
+         JOIN Particulier pa ON pa.idParticulier = ap.idParticulier
+         JOIN Utilisateur u ON u.id = pa.id
+         WHERE ap.idProfessionnel = ?
+         ORDER BY ap.dateCreation DESC`,
+        [idProfessionnel]
+      ),
+      pool.query(
+        `SELECT e.idEntreprise, e.nom, e.adresse_ligne, e.code_postal, e.ville
+         FROM Entreprise e
+         JOIN Professionnel_Entreprise pe ON pe.idEntreprise = e.idEntreprise
+         WHERE pe.idProfessionnel = ?
+         ORDER BY e.nom ASC`,
+        [idProfessionnel]
+      ),
+    ]);
+
+    const noteMoyenne = Number(profileRow.noteMoyenne || 0);
+    const nombreAvis = Number(profileRow.nombreAvis || 0);
 
     return res.json({
+      profile: {
+        idProfessionnel: profileRow.idProfessionnel,
+        idUtilisateur: profileRow.idUtilisateur,
+        nom: profileRow.nom,
+        prenom: profileRow.prenom,
+        email: profileRow.email,
+        description: profileRow.description,
+        photo: profileRow.photo,
+        nombreAvis,
+        noteMoyenne,
+      },
       summary: {
-        ...summary,
-        noteMoyenne: Number(summary.noteMoyenne || 0),
-        nombreAvis: Number(summary.nombreAvis || 0),
+        idProfessionnel: profileRow.idProfessionnel,
+        nom: profileRow.nom,
+        prenom: profileRow.prenom,
+        noteMoyenne,
+        nombreAvis,
       },
       reviews,
+      companies,
     });
   } catch (error) {
     return next(error);

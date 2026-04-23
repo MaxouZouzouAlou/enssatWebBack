@@ -4,6 +4,7 @@ import {
 	sendIncidentReplyEmail,
 	sendIncidentStatusEmail
 } from './email-service.js';
+import { createIncidentReplyNotification, createIncidentStatusNotification } from './notifications-service.js';
 
 const SEVERITIES = new Set(['low', 'medium', 'high', 'critical']);
 const STATUSES = new Set(['open', 'in_progress', 'resolved', 'closed']);
@@ -183,6 +184,7 @@ export async function addIncidentReply(actor, idTicket, payload) {
 
 	const detail = await getIncidentTicketDetail(actor, idTicket);
 	void notifyIncidentReply(ticket, actor);
+	void createIncidentReplyNotification(ticket.creator.email).catch(() => {});
 	return detail;
 }
 
@@ -193,7 +195,7 @@ export async function updateIncidentStatus(actor, idTicket, payload) {
 	const ticket = await getTicketForActor(actor, idTicket);
 
 	if (ticket.status === nextStatus) {
-		throw new IncidentError(400, 'Le ticket possede deja ce statut.');
+		throw new IncidentError(400, 'Le ticket possède déjà ce statut.');
 	}
 
 	const conn = await pool.getConnection();
@@ -215,6 +217,9 @@ export async function updateIncidentStatus(actor, idTicket, payload) {
 
 		const detail = await getIncidentTicketDetail(actor, idTicket);
 		void notifyIncidentStatus(detail.ticket, actor, ticket.status);
+		if (nextStatus === 'resolved' || nextStatus === 'closed') {
+			void createIncidentStatusNotification(ticket.creator.email, nextStatus).catch(() => {});
+		}
 		return detail;
 	} catch (error) {
 		await conn.rollback();

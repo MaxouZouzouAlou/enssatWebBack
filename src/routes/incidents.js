@@ -21,7 +21,7 @@ async function requireIncidentActor(req, res, next) {
 		});
 
 		if (!session) {
-			return res.status(401).json({ error: 'Non authentifie.' });
+			return res.status(401).json({ error: 'Non authentifié.' });
 		}
 
 		req.authSession = session;

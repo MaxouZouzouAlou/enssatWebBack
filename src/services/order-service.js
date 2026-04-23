@@ -65,6 +65,32 @@ function buildOwnerOrderColumns(owner) {
 	throw new CheckoutError(500, 'Type de panier non gere.');
 }
 
+async function getOwnerOrderSequenceNumber(conn, owner, idCommande) {
+	const ownerColumn = owner?.column;
+	if (!ownerColumn || !Number.isInteger(Number(owner.id))) {
+		throw new CheckoutError(500, 'Proprietaire de commande invalide.');
+	}
+
+	const [rows] = await conn.query(
+		`SELECT ranked.numeroCommandeUtilisateur
+		 FROM (
+		 	SELECT
+		 		c.idCommande,
+		 		ROW_NUMBER() OVER (
+		 			PARTITION BY ${ownerColumn}
+		 			ORDER BY c.dateCommande ASC, c.idCommande ASC
+		 		) AS numeroCommandeUtilisateur
+		 	FROM Commande c
+		 	WHERE ${ownerColumn} = ?
+		 ) AS ranked
+		 WHERE ranked.idCommande = ?
+		 LIMIT 1`,
+		[owner.id, idCommande]
+	);
+
+	return Number(rows[0]?.numeroCommandeUtilisateur || 1);
+}
+
 function validateCartLine(item) {
 	const quantity = Number(item.quantite || 0);
 	const stock = Number(item.stock || 0);
@@ -661,7 +687,7 @@ export async function previewCheckout({
 			}
 		}
 		if (modeLivraison === 'lieu_vente' && !originCoordinates) {
-			throw new CheckoutError(422, 'Impossible de geocoder votre adresse de depart. Renseignez une adresse personnelle exploitable avant de calculer le trajet.');
+			throw new CheckoutError(422, 'Impossible de géocoder votre adresse de départ. Renseignez une adresse personnelle exploitable avant de calculer le trajet.');
 		}
 		const delivery = buildDeliverySelection({
 			modeLivraison,
@@ -687,7 +713,7 @@ export async function previewCheckout({
 
 		if (normalizedVoucherId != null) {
 			if (owner.column !== 'idParticulier') {
-				throw new CheckoutError(403, 'Bon d achat reserve aux comptes particuliers.');
+				throw new CheckoutError(403, "Bon d'achat réservé aux comptes particuliers.");
 			}
 
 			const [voucherRows] = await conn.query(
@@ -699,13 +725,13 @@ export async function previewCheckout({
 			);
 			const voucher = voucherRows[0];
 			if (!voucher || Number(voucher.idParticulier) !== Number(owner.id)) {
-				throw new CheckoutError(404, 'Bon d achat introuvable.');
+				throw new CheckoutError(404, "Bon d'achat introuvable.");
 			}
 			if (voucher.statut !== 'actif') {
-				throw new CheckoutError(409, 'Ce bon d achat n est plus utilisable.');
+				throw new CheckoutError(409, "Ce bon d'achat n'est plus utilisable.");
 			}
 			if (voucher.dateExpiration && new Date(voucher.dateExpiration).getTime() <= Date.now()) {
-				throw new CheckoutError(409, 'Ce bon d achat a expire.');
+				throw new CheckoutError(409, "Ce bon d'achat a expiré.");
 			}
 
 			appliedVoucher = {
@@ -788,7 +814,7 @@ export async function checkoutCart({
 			}
 		}
 		if (modeLivraison === 'lieu_vente' && !originCoordinates) {
-			throw new CheckoutError(422, 'Impossible de geocoder votre adresse de depart. Renseignez une adresse personnelle exploitable avant de calculer le trajet.');
+			throw new CheckoutError(422, 'Impossible de géocoder votre adresse de départ. Renseignez une adresse personnelle exploitable avant de calculer le trajet.');
 		}
 		const delivery = buildDeliverySelection({
 			modeLivraison,
@@ -814,7 +840,7 @@ export async function checkoutCart({
 
 		if (normalizedVoucherId != null) {
 			if (owner.column !== 'idParticulier') {
-				throw new CheckoutError(403, 'Bon d achat reserve aux comptes particuliers.');
+				throw new CheckoutError(403, "Bon d'achat réservé aux comptes particuliers.");
 			}
 
 			const [voucherRows] = await conn.query(
@@ -828,11 +854,11 @@ export async function checkoutCart({
 
 			const voucher = voucherRows[0];
 			if (!voucher || Number(voucher.idParticulier) !== Number(owner.id)) {
-				throw new CheckoutError(404, 'Bon d achat introuvable.');
+				throw new CheckoutError(404, "Bon d'achat introuvable.");
 			}
 
 			if (voucher.statut !== 'actif') {
-				throw new CheckoutError(409, 'Ce bon d achat n est plus utilisable.');
+				throw new CheckoutError(409, "Ce bon d'achat n'est plus utilisable.");
 			}
 
 			if (voucher.dateExpiration && new Date(voucher.dateExpiration).getTime() <= Date.now()) {
@@ -840,7 +866,7 @@ export async function checkoutCart({
 					"UPDATE BonAchat SET statut = 'expire' WHERE idBon = ?",
 					[voucher.idBon]
 				);
-				throw new CheckoutError(409, 'Ce bon d achat a expire.');
+				throw new CheckoutError(409, "Ce bon d'achat a expiré.");
 			}
 
 			appliedVoucher = {
@@ -871,6 +897,7 @@ export async function checkoutCart({
 				ownerColumns.idProfessionnel
 			]
 		);
+		const numeroCommandeUtilisateur = await getOwnerOrderSequenceNumber(conn, owner, Number(orderResult.insertId));
 
 		for (const item of items) {
 			const linePickupAssignment = delivery.itemAssignments.find((assignment) => assignment.idProduit === Number(item.idProduit));
@@ -944,6 +971,7 @@ export async function checkoutCart({
 		return {
 			order: {
 				idCommande: orderResult.insertId,
+				numeroCommandeUtilisateur,
 				idPanier: cart.idPanier,
 				modeLivraison: delivery.modeLivraison,
 				modePaiement: normalizedModePaiement,

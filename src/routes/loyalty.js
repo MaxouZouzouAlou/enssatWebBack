@@ -3,6 +3,7 @@ import { fromNodeHeaders } from 'better-auth/node';
 import { auth } from '../auth.js';
 import pool from '../server_config/db.js';
 import { getBusinessProfileByAuthUserId } from '../services/auth-profile-service.js';
+import { createLoyaltyNotification, createVoucherNotification } from '../services/notifications-service.js';
 
 const router = express.Router();
 
@@ -52,7 +53,7 @@ async function requireParticulier(req, res, next) {
     });
 
     if (!session) {
-      return res.status(401).json({ error: 'Non authentifie.' });
+      return res.status(401).json({ error: 'Non authentifié.' });
     }
 
     const profile = await getBusinessProfileByAuthUserId(session.user.id);
@@ -141,7 +142,7 @@ router.post('/challenges/:code/claim', requireParticulier, async (req, res, next
     const code = String(req.params.code || '').trim().toUpperCase();
 
     if (!code) {
-      return res.status(400).json({ error: 'Code de defi invalide.' });
+      return res.status(400).json({ error: 'Code de défi invalide.' });
     }
 
     await conn.beginTransaction();
@@ -157,7 +158,7 @@ router.post('/challenges/:code/claim', requireParticulier, async (req, res, next
 
     if (!challengeRows.length) {
       await conn.rollback();
-      return res.status(404).json({ error: 'Defi introuvable.' });
+      return res.status(404).json({ error: 'Défi introuvable.' });
     }
 
     const challenge = challengeRows[0];
@@ -176,7 +177,7 @@ router.post('/challenges/:code/claim', requireParticulier, async (req, res, next
 
     if (currentClaims >= maxClaims) {
       await conn.rollback();
-      return res.status(409).json({ error: 'Defi deja complete le nombre maximum de fois.' });
+      return res.status(409).json({ error: 'Défi déjà complété le nombre maximum de fois.' });
     }
 
     if (progressRows.length) {
@@ -209,6 +210,8 @@ router.post('/challenges/:code/claim', requireParticulier, async (req, res, next
     const updatedBalance = Number(particulier?.pointsFidelite || 0);
 
     await conn.commit();
+
+    void createLoyaltyNotification(req.authSession.user.id, Number(challenge.pointsRecompense || 0)).catch(() => {});
 
     return res.status(201).json({
       challenge: {
@@ -251,7 +254,7 @@ router.post('/redeem-voucher', requireParticulier, async (req, res, next) => {
 
     if (currentPoints < pointsToSpend) {
       await conn.rollback();
-      return res.status(409).json({ error: 'Points insuffisants pour creer ce bon.' });
+      return res.status(409).json({ error: 'Points insuffisants pour créer ce bon.' });
     }
 
     await conn.execute(
@@ -282,6 +285,8 @@ router.post('/redeem-voucher', requireParticulier, async (req, res, next) => {
     const updatedBalance = Number(updatedRows[0]?.pointsFidelite || 0);
 
     await conn.commit();
+
+    void createVoucherNotification(req.authSession.user.id, voucherValue, codeBon).catch(() => {});
 
     return res.status(201).json({
       voucher: voucherRows[0],

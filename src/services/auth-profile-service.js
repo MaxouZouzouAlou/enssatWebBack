@@ -1,6 +1,6 @@
 import pool from '../server_config/db.js';
 
-const ACCOUNT_TYPES = new Set(['particulier', 'professionnel']);
+const ACCOUNT_TYPES = new Set(['particulier', 'professionnel', 'superadmin']);
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const NAME_REGEX = /^[A-Za-zÀ-ÖØ-öø-ÿ' -]{2,100}$/;
 const POSTAL_CODE_REGEX = /^\d{5}$/;
@@ -70,8 +70,31 @@ function nullableTrim(value) {
 	return normalized ? normalized : null;
 }
 
+function validateProfessionalCompanyPayload(payload = {}) {
+	const nom = trim(payload.nom);
+	const siret = validateSiret(payload.siret);
+	const adresse_ligne = trim(payload.adresse_ligne);
+	const code_postal = trim(payload.code_postal);
+	const ville = trim(payload.ville);
+
+	if (!nom) {
+		throw new ValidationError("Le nom de l'entreprise est requis.");
+	}
+
+	if (!adresse_ligne || !code_postal || !ville) {
+		throw new ValidationError("L'adresse de l'entreprise est requise.");
+	}
+
+	validatePostalCode(code_postal);
+
+	return { nom, siret, adresse_ligne, code_postal, ville };
+}
+
 export function validateRegistrationPayload(payload) {
 	const accountType = normalizeAccountType(payload.accountType);
+	if (accountType === 'superadmin') {
+		throw new ValidationError('La création publique de comptes superadmin est interdite.');
+	}
 	const email = normalizeEmail(payload.email);
 	const nom = trim(payload.nom);
 	const prenom = trim(payload.prenom);
@@ -81,9 +104,9 @@ export function validateRegistrationPayload(payload) {
 		throw new ValidationError('Adresse email invalide.');
 	}
 	validateName(nom, 'Nom');
-	validateName(prenom, 'Prenom');
+	validateName(prenom, 'Prénom');
 	if (password.length < 8) {
-		throw new ValidationError('Le mot de passe doit contenir au moins 8 caracteres.');
+		throw new ValidationError('Le mot de passe doit contenir au moins 8 caractères.');
 	}
 
 	const normalized = {
@@ -123,12 +146,12 @@ export function validateRegistrationPayload(payload) {
 export async function assertRegistrationAvailable({ email, accountType, siret }) {
 	const [authRows] = await pool.execute('SELECT id FROM `user` WHERE email = ? LIMIT 1', [email]);
 	if (authRows.length) {
-		throw new ConflictError('Un compte existe deja avec cette adresse email.');
+		throw new ConflictError('Un compte existe déjà avec cette adresse email.');
 	}
 
 	const [userRows] = await pool.execute('SELECT id FROM Utilisateur WHERE email = ? LIMIT 1', [email]);
 	if (userRows.length) {
-		throw new ConflictError('Cette adresse email est deja utilisee.');
+		throw new ConflictError('Cette adresse email est déjà utilisée.');
 	}
 
 	if (accountType === 'professionnel') {
@@ -137,7 +160,7 @@ export async function assertRegistrationAvailable({ email, accountType, siret })
 			[siret]
 		);
 		if (siretRows.length) {
-			throw new ConflictError('Ce SIRET est deja rattache a un compte professionnel.');
+			throw new ConflictError('Ce SIRET est déjà rattaché à un compte professionnel.');
 		}
 	}
 }
@@ -423,7 +446,7 @@ export async function updatePersonalAddressByAuthUserId(authUserId, payload = {}
 	const ville = trim(payload.ville);
 
 	if (!adresseLigne || !codePostal || !ville) {
-		throw new ValidationError('Adresse incomplete.');
+		throw new ValidationError('Adresse incomplète.');
 	}
 
 	validatePostalCode(codePostal);
@@ -460,17 +483,17 @@ export async function updatePersonalProfileByAuthUserId(authUserId, payload = {}
 	const ville = nullableTrim(payload.ville ?? profile.particulier?.ville ?? profile.professionnel?.ville ?? '');
 
 	if (!nom || !prenom) {
-		throw new ValidationError('Nom et prenom requis.');
+		throw new ValidationError('Nom et prénom requis.');
 	}
 	validateName(nom, 'Nom');
-	validateName(prenom, 'Prenom');
+	validateName(prenom, 'Prénom');
 
 	if (!currentEmail || !EMAIL_REGEX.test(currentEmail)) {
 		throw new ValidationError('Adresse email invalide.');
 	}
 
 	if (requestedEmail !== currentEmail) {
-		throw new ValidationError("Le changement d'email doit etre confirme via le lien envoye par email.");
+		throw new ValidationError("Le changement d'email doit être confirmé via le lien envoyé par email.");
 	}
 
 	if (codePostal) {
@@ -480,7 +503,7 @@ export async function updatePersonalProfileByAuthUserId(authUserId, payload = {}
 	const utilisateurId = await getBusinessUtilisateurId(profile);
 
 	if (!utilisateurId) {
-		throw new ValidationError('Utilisateur metier introuvable.');
+		throw new ValidationError('Utilisateur métier introuvable.');
 	}
 
 	const conn = await pool.getConnection();
@@ -512,6 +535,196 @@ export async function updatePersonalProfileByAuthUserId(authUserId, payload = {}
 	return getBusinessProfileByAuthUserId(authUserId);
 }
 
+export async function createProfessionalCompanyByAuthUserId(authUserId, payload = {}) {
+	const profile = await getBusinessProfileByAuthUserId(authUserId);
+	if (!profile?.professionnel?.id) {
+		throw new ValidationError('Compte professionnel requis.');
+	}
+
+	const company = validateProfessionalCompanyPayload(payload);
+	const professionnelId = profile.professionnel.id;
+
+	const conn = await pool.getConnection();
+	try {
+		await conn.beginTransaction();
+
+		const [existingSiretRows] = await conn.execute(
+			'SELECT idProfessionnel FROM Professionnel_Siret WHERE numero_siret = ? LIMIT 1',
+			[company.siret]
+		);
+		if (existingSiretRows.length) {
+			throw new ConflictError('Ce SIRET est déjà rattaché à un compte professionnel.');
+		}
+
+		const [existingCompanyRows] = await conn.execute(
+			'SELECT idEntreprise FROM Entreprise WHERE siret = ? LIMIT 1',
+			[company.siret]
+		);
+
+		let entrepriseId = existingCompanyRows[0]?.idEntreprise || null;
+		if (!entrepriseId) {
+			const [companyResult] = await conn.execute(
+				'INSERT INTO Entreprise (nom, siret, adresse_ligne, code_postal, ville) VALUES (?, ?, ?, ?, ?)',
+				[company.nom, company.siret, company.adresse_ligne, company.code_postal, company.ville]
+			);
+			entrepriseId = companyResult.insertId;
+		}
+
+		await conn.execute(
+			'INSERT INTO Professionnel_Siret (idProfessionnel, numero_siret) VALUES (?, ?)',
+			[professionnelId, company.siret]
+		);
+		await conn.execute(
+			'INSERT INTO Professionnel_Entreprise (idProfessionnel, idEntreprise) VALUES (?, ?)',
+			[professionnelId, entrepriseId]
+		);
+
+		if (!profile.professionnel.entreprise?.id) {
+			await conn.execute(
+				'UPDATE AuthProfile SET entrepriseId = ?, updatedAt = NOW() WHERE authUserId = ?',
+				[entrepriseId, authUserId]
+			);
+		}
+
+		await conn.commit();
+		return getBusinessProfileByAuthUserId(authUserId);
+	} catch (error) {
+		await conn.rollback();
+		if (error?.code === 'ER_DUP_ENTRY') {
+			throw new ConflictError('Cette entreprise est déjà rattachée à votre compte.');
+		}
+		throw error;
+	} finally {
+		conn.release();
+	}
+}
+
+async function forceDeleteCompanyWithinTransaction(conn, companyId) {
+	const [managedCompanyRows] = await conn.execute(
+		'SELECT idEntreprise, siret FROM Entreprise WHERE idEntreprise = ? LIMIT 1',
+		[companyId]
+	);
+
+	if (!managedCompanyRows.length) {
+		throw new ValidationError('Entreprise introuvable.');
+	}
+
+	const managedCompany = managedCompanyRows[0];
+
+	const [linkedProfessionals] = await conn.execute(
+		`SELECT pe.idProfessionnel, ap.authUserId
+		 FROM Professionnel_Entreprise pe
+		 LEFT JOIN AuthProfile ap ON ap.professionnelId = pe.idProfessionnel
+		 WHERE pe.idEntreprise = ?`,
+		[companyId]
+	);
+
+	// Command lines must be removed first because LigneCommande -> Produit is RESTRICT.
+	await conn.execute(
+		`DELETE lc
+		 FROM LigneCommande lc
+		 INNER JOIN Produit p ON p.idProduit = lc.idProduit
+		 WHERE p.idEntreprise = ?`,
+		[companyId]
+	);
+
+	await conn.execute(
+		'DELETE FROM Professionnel_Siret WHERE numero_siret = ?',
+		[managedCompany.siret]
+	);
+
+	for (const linkedProfessional of linkedProfessionals) {
+		if (!linkedProfessional.authUserId) continue;
+
+		const [remainingCompanyRows] = await conn.execute(
+			`SELECT pe.idEntreprise
+			 FROM Professionnel_Entreprise pe
+			 WHERE pe.idProfessionnel = ? AND pe.idEntreprise <> ?
+			 ORDER BY pe.idEntreprise
+			 LIMIT 1`,
+			[linkedProfessional.idProfessionnel, companyId]
+		);
+		const nextCompanyId = remainingCompanyRows[0]?.idEntreprise || null;
+
+		await conn.execute(
+			`UPDATE AuthProfile
+			 SET entrepriseId = CASE WHEN entrepriseId = ? THEN ? ELSE entrepriseId END,
+			     updatedAt = NOW()
+			 WHERE authUserId = ?`,
+			[companyId, nextCompanyId, linkedProfessional.authUserId]
+		);
+	}
+
+	await conn.execute('DELETE FROM Entreprise WHERE idEntreprise = ?', [companyId]);
+}
+
+export async function deleteProfessionalCompanyByAuthUserId(authUserId, idEntreprise) {
+	const companyId = Number(idEntreprise);
+	if (!Number.isInteger(companyId) || companyId <= 0) {
+		throw new ValidationError('Identifiant entreprise invalide.');
+	}
+
+	const profile = await getBusinessProfileByAuthUserId(authUserId);
+	if (!profile?.professionnel?.id) {
+		throw new ValidationError('Compte professionnel requis.');
+	}
+
+	const professionnelId = profile.professionnel.id;
+	const conn = await pool.getConnection();
+	try {
+		await conn.beginTransaction();
+
+		const [managedCompanyRows] = await conn.execute(
+			`SELECT e.idEntreprise, e.siret
+			 FROM Professionnel_Entreprise pe
+			 INNER JOIN Entreprise e ON e.idEntreprise = pe.idEntreprise
+			 WHERE pe.idProfessionnel = ? AND pe.idEntreprise = ?
+			 LIMIT 1`,
+			[professionnelId, companyId]
+		);
+
+		if (!managedCompanyRows.length) {
+			throw new ValidationError('Entreprise introuvable pour ce compte professionnel.');
+		}
+
+		await forceDeleteCompanyWithinTransaction(conn, companyId);
+
+		await conn.commit();
+		return getBusinessProfileByAuthUserId(authUserId);
+	} catch (error) {
+		await conn.rollback();
+		if (error?.code === 'ER_ROW_IS_REFERENCED_2' || error?.errno === 1451) {
+			throw new ConflictError("Suppression impossible : certaines données historiques associées à l'entreprise bloquent encore la suppression.");
+		}
+		throw error;
+	} finally {
+		conn.release();
+	}
+}
+
+export async function deleteCompanyById(idEntreprise) {
+	const companyId = Number(idEntreprise);
+	if (!Number.isInteger(companyId) || companyId <= 0) {
+		throw new ValidationError('Identifiant entreprise invalide.');
+	}
+
+	const conn = await pool.getConnection();
+	try {
+		await conn.beginTransaction();
+		await forceDeleteCompanyWithinTransaction(conn, companyId);
+		await conn.commit();
+		return { deleted: true };
+	} catch (error) {
+		await conn.rollback();
+		if (error?.code === 'ER_ROW_IS_REFERENCED_2' || error?.errno === 1451) {
+			throw new ConflictError("Suppression impossible : certaines données historiques associées à l'entreprise bloquent encore la suppression.");
+		}
+		throw error;
+	} finally {
+		conn.release();
+	}
+}
+
 export async function syncBusinessEmailByAuthUserId(authUserId, email) {
 	const normalizedEmail = normalizeEmail(email);
 	if (!normalizedEmail || !EMAIL_REGEX.test(normalizedEmail)) {
@@ -525,7 +738,7 @@ export async function syncBusinessEmailByAuthUserId(authUserId, email) {
 
 	const utilisateurId = await getBusinessUtilisateurId(profile);
 	if (!utilisateurId) {
-		throw new ValidationError('Utilisateur metier introuvable.');
+		throw new ValidationError('Utilisateur métier introuvable.');
 	}
 
 	const [duplicateRows] = await pool.execute(
@@ -533,7 +746,7 @@ export async function syncBusinessEmailByAuthUserId(authUserId, email) {
 		[normalizedEmail, utilisateurId]
 	);
 	if (duplicateRows.length) {
-		throw new ConflictError('Cette adresse email est deja utilisee.');
+		throw new ConflictError('Cette adresse email est déjà utilisée.');
 	}
 
 	await pool.execute('UPDATE Utilisateur SET email = ? WHERE id = ?', [normalizedEmail, utilisateurId]);

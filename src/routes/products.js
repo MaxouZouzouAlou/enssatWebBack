@@ -9,7 +9,7 @@ import pool from '../server_config/db.js';
 import { getBusinessProfileByAuthUserId } from '../services/auth-profile-service.js';
 import { geocodeAddress } from '../services/geocoding-service.js';
 
-const CATALOG_SORTS = new Set(['alpha_asc', 'alpha_desc', 'stock_desc', 'proximity']);
+const CATALOG_SORTS = new Set(['alpha_asc', 'alpha_desc', 'stock_desc', 'rating_desc', 'proximity']);
 const geocodedAddressCache = new Map();
 
 function normalizeText(value) {
@@ -117,6 +117,8 @@ function buildOrderByClause(sort) {
 		return 'LOWER(COALESCE(p.nom, \'\')) DESC, p.idProduit DESC';
 	case 'stock_desc':
 		return 'COALESCE(p.stock, 0) DESC, LOWER(COALESCE(p.nom, \'\')) ASC, p.idProduit ASC';
+	case 'rating_desc':
+		return 'COALESCE(vp.noteMoyenne, 0) DESC, COALESCE(vp.nombreAvis, 0) DESC, LOWER(COALESCE(p.nom, \'\')) ASC, p.idProduit ASC';
 	case 'proximity':
 	case 'alpha_asc':
 	default:
@@ -489,7 +491,7 @@ const upload = multer({ storage });
 async function requireProfessionalSession(req, res, next) {
 	try {
 		const session = await auth.api.getSession({ headers: fromNodeHeaders(req.headers) });
-		if (!session) return res.status(401).json({ error: 'Non authentifie.' });
+		if (!session) return res.status(401).json({ error: 'Non authentifié.' });
 
 		const profile = await getBusinessProfileByAuthUserId(session.user.id);
 		if (profile?.accountType !== 'professionnel' || !profile.professionnel) {

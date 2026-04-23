@@ -6,6 +6,7 @@ import {
 	validateSiret
 } from './services/auth-profile-service.js';
 import { sendAccountVerificationEmail, sendEmailChangeVerificationEmail, sendPasswordResetEmail } from './services/email-service.js';
+import { createWelcomeNotification } from './services/notifications-service.js';
 import pool from './server_config/db.js';
 
 const frontendOrigin = process.env.FRONTEND_ORIGIN || 'http://localhost:3000';
@@ -156,6 +157,7 @@ export const auth = betterAuth({
 						prenom: body.prenom || user.firstName,
 						entreprise: body.entreprise
 					});
+					await createWelcomeNotification(user.id);
 				}
 			}
 		},

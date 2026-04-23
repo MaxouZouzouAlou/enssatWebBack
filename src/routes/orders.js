@@ -1,4 +1,5 @@
 import express from 'express';
+import PDFDocument from 'pdfkit';
 import { fromNodeHeaders } from 'better-auth/node';
 import { auth } from '../auth.js';
 import pool from '../server_config/db.js';
@@ -13,6 +14,8 @@ import {
 	listRecurringOrdersByOwner,
 	updateRecurringOrder
 } from '../services/recurring-order-service.js';
+import { createOrderNotification } from '../services/notifications-service.js';
+import { sendOrderConfirmationEmail } from '../services/email-service.js';
 
 function getCartOwner(profile) {
 	if (profile?.particulier?.id) {
@@ -50,9 +53,48 @@ function getOwnerWhereClause(owner) {
 	throw new Error('Unsupported order owner.');
 }
 
+function buildOwnerOrderSequenceSelect(ownerFilterClause) {
+	return `(
+		SELECT ranked.numeroCommandeUtilisateur
+		FROM (
+			SELECT
+				c2.idCommande,
+				ROW_NUMBER() OVER (
+					PARTITION BY ${ownerFilterClause.includes('idParticulier') ? 'c2.idParticulier' : 'c2.idProfessionnel'}
+					ORDER BY c2.dateCommande ASC, c2.idCommande ASC
+				) AS numeroCommandeUtilisateur
+			FROM Commande c2
+			WHERE ${ownerFilterClause.replaceAll('c.', 'c2.')}
+		) AS ranked
+		WHERE ranked.idCommande = c.idCommande
+		LIMIT 1
+	)`;
+}
+
 function recurringErrorStatus(message = '') {
 	if (/introuvable/i.test(message)) return 404;
 	return 400;
+}
+
+function getOwnerInvoiceLabel(profile) {
+	if (profile?.particulier) {
+		return {
+			type: 'Particulier',
+			id: profile.particulier.id
+		};
+	}
+
+	if (profile?.professionnel) {
+		return {
+			type: 'Professionnel',
+			id: profile.professionnel.id
+		};
+	}
+
+	return {
+		type: 'Compte',
+		id: 'N/A'
+	};
 }
 
 export function createOrdersRouter({
@@ -71,7 +113,7 @@ export function createOrdersRouter({
 		});
 
 		if (!session) {
-			res.status(401).json({ error: 'Non authentifie.' });
+			res.status(401).json({ error: 'Non authentifié.' });
 			return null;
 		}
 
@@ -135,6 +177,19 @@ export function createOrdersRouter({
 				geocodeAddressFn
 			});
 
+			void createOrderNotification(
+				context.session.user.id,
+				result.order.idCommande,
+				result.order.numeroCommandeUtilisateur
+			).catch(() => {});
+			void sendOrderConfirmationEmail({
+				user: { email: context.session.user.email, name: context.session.user.name || '' },
+				order: result.order,
+				items: result.items,
+				delivery: result.delivery,
+				loyalty: result.loyalty,
+				appliedVoucher: result.appliedVoucher
+			}).catch(() => {});
 			return res.status(201).json(result);
 		} catch (error) {
 			if (error instanceof CheckoutError) {
@@ -195,9 +250,11 @@ export function createOrdersRouter({
 			if (!context) return;
 
 			const ownerFilter = getOwnerWhereClause(context.owner);
+			const ownerOrderSequenceSelect = buildOwnerOrderSequenceSelect(ownerFilter.clause);
 			const [rows] = await db.query(
 				`SELECT
 					c.idCommande,
+					${ownerOrderSequenceSelect} AS numeroCommandeUtilisateur,
 					c.dateCommande,
 					c.modeLivraison,
 					c.modePaiement,
@@ -216,6 +273,7 @@ export function createOrdersRouter({
 			return res.json({
 				items: rows.map((row) => ({
 					idCommande: row.idCommande,
+					numeroCommandeUtilisateur: Number(row.numeroCommandeUtilisateur || 0),
 					dateCommande: row.dateCommande,
 					modeLivraison: row.modeLivraison,
 					modePaiement: row.modePaiement,
@@ -313,9 +371,11 @@ export function createOrdersRouter({
 			}
 
 			const ownerFilter = getOwnerWhereClause(context.owner);
+			const ownerOrderSequenceSelect = buildOwnerOrderSequenceSelect(ownerFilter.clause);
 			const [orderRows] = await db.query(
 				`SELECT
 					c.idCommande,
+					${ownerOrderSequenceSelect} AS numeroCommandeUtilisateur,
 					c.dateCommande,
 					c.modeLivraison,
 					c.modePaiement,
@@ -332,57 +392,58 @@ export function createOrdersRouter({
 				return res.status(404).json({ error: 'Commande introuvable.' });
 			}
 
-			const [lineRows] = await db.query(
-				`SELECT
-					lc.idProduit,
-					lc.idLieu,
-					lc.quantite,
-					lc.prixTTC,
-					p.nom,
-					p.nature,
-					p.unitaireOuKilo,
-					MIN(i.path) AS imagePath,
-					lv.nom AS lieuNom,
-					lv.horaires AS lieuHoraires,
-					lv.adresse_ligne AS lieuAdresseLigne,
-					lv.code_postal AS lieuCodePostal,
-					lv.ville AS lieuVille
-				 FROM LigneCommande lc
-				 INNER JOIN Produit p ON p.idProduit = lc.idProduit
-				 LEFT JOIN Produit_Image pi ON pi.idProduit = p.idProduit
-				 LEFT JOIN Image i ON i.idImage = pi.idImage
-				 LEFT JOIN LieuVente lv ON lv.idLieu = lc.idLieu
-				 WHERE lc.idCommande = ?
-				 GROUP BY lc.idProduit, lc.idLieu, lc.quantite, lc.prixTTC, p.nom, p.nature, p.unitaireOuKilo, lv.nom, lv.horaires, lv.adresse_ligne, lv.code_postal, lv.ville
-				 ORDER BY p.nom ASC, lc.idProduit ASC`,
-				[idCommande]
-			);
-
-			const [deliveryRows] = await db.query(
-				`SELECT
-					l.idLivraison,
-					l.idLieu,
-					l.modeLivraison,
-					l.adresse,
-					l.idRelais,
-					pr.nom AS relaisNom,
-					pr.adresse_ligne AS relaisAdresseLigne,
-					pr.code_postal AS relaisCodePostal,
-					pr.ville AS relaisVille,
-					lv.nom,
-					lv.horaires,
-					lv.adresse_ligne,
-					lv.code_postal,
-					lv.ville,
-					lv.latitude,
-					lv.longitude
-				 FROM Livraison l
-				 LEFT JOIN PointRelais pr ON pr.idRelais = l.idRelais
-				 LEFT JOIN LieuVente lv ON lv.idLieu = l.idLieu
-				 WHERE l.idCommande = ?
-				 ORDER BY l.idLivraison ASC`,
-				[idCommande]
-			);
+			const [[lineRows], [deliveryRows]] = await Promise.all([
+				db.query(
+					`SELECT
+						lc.idProduit,
+						lc.idLieu,
+						lc.quantite,
+						lc.prixTTC,
+						p.nom,
+						p.nature,
+						p.unitaireOuKilo,
+						MIN(i.path) AS imagePath,
+						lv.nom AS lieuNom,
+						lv.horaires AS lieuHoraires,
+						lv.adresse_ligne AS lieuAdresseLigne,
+						lv.code_postal AS lieuCodePostal,
+						lv.ville AS lieuVille
+					 FROM LigneCommande lc
+					 INNER JOIN Produit p ON p.idProduit = lc.idProduit
+					 LEFT JOIN Produit_Image pi ON pi.idProduit = p.idProduit
+					 LEFT JOIN Image i ON i.idImage = pi.idImage
+					 LEFT JOIN LieuVente lv ON lv.idLieu = lc.idLieu
+					 WHERE lc.idCommande = ?
+					 GROUP BY lc.idProduit, lc.idLieu, lc.quantite, lc.prixTTC, p.nom, p.nature, p.unitaireOuKilo, lv.nom, lv.horaires, lv.adresse_ligne, lv.code_postal, lv.ville
+					 ORDER BY p.nom ASC, lc.idProduit ASC`,
+					[idCommande]
+				),
+				db.query(
+					`SELECT
+						l.idLivraison,
+						l.idLieu,
+						l.modeLivraison,
+						l.adresse,
+						l.idRelais,
+						pr.nom AS relaisNom,
+						pr.adresse_ligne AS relaisAdresseLigne,
+						pr.code_postal AS relaisCodePostal,
+						pr.ville AS relaisVille,
+						lv.nom,
+						lv.horaires,
+						lv.adresse_ligne,
+						lv.code_postal,
+						lv.ville,
+						lv.latitude,
+						lv.longitude
+					 FROM Livraison l
+					 LEFT JOIN PointRelais pr ON pr.idRelais = l.idRelais
+					 LEFT JOIN LieuVente lv ON lv.idLieu = l.idLieu
+					 WHERE l.idCommande = ?
+					 ORDER BY l.idLivraison ASC`,
+					[idCommande]
+				),
+			]);
 
 			const pickupStops = deliveryRows
 				.filter((row) => row.modeLivraison === 'lieu_vente' && row.idLieu && row.latitude != null && row.longitude != null)
@@ -425,6 +486,7 @@ export function createOrdersRouter({
 			return res.json({
 				order: {
 					idCommande: orderRows[0].idCommande,
+					numeroCommandeUtilisateur: Number(orderRows[0].numeroCommandeUtilisateur || 0),
 					dateCommande: orderRows[0].dateCommande,
 					modeLivraison: orderRows[0].modeLivraison,
 					modePaiement: orderRows[0].modePaiement,
@@ -453,6 +515,94 @@ export function createOrdersRouter({
 					} : null
 				}))
 			});
+		} catch (error) {
+			return next(error);
+		}
+	});
+
+	router.get('/:idCommande/facture.pdf', async (req, res, next) => {
+		try {
+			const context = await requireProfile(req, res);
+			if (!context) return;
+
+			const idCommande = Number(req.params.idCommande);
+			if (!Number.isInteger(idCommande) || idCommande <= 0) {
+				return res.status(400).json({ error: 'Identifiant commande invalide.' });
+			}
+
+			const ownerFilter = getOwnerWhereClause(context.owner);
+			const ownerOrderSequenceSelect = buildOwnerOrderSequenceSelect(ownerFilter.clause);
+			const [orderRows] = await db.query(
+				`SELECT
+					c.idCommande,
+					${ownerOrderSequenceSelect} AS numeroCommandeUtilisateur,
+					c.dateCommande,
+					c.modeLivraison,
+					c.modePaiement,
+					c.prixTotal,
+					c.status
+				 FROM Commande c
+				 WHERE c.idCommande = ?
+				   AND ${ownerFilter.clause}
+				 LIMIT 1`,
+				[idCommande, ...ownerFilter.params]
+			);
+
+			if (!orderRows.length) {
+				return res.status(404).json({ error: 'Commande introuvable.' });
+			}
+
+			const [lineRows] = await db.query(
+				`SELECT
+					lc.idProduit,
+					lc.quantite,
+					lc.prixTTC,
+					p.nom
+				 FROM LigneCommande lc
+				 INNER JOIN Produit p ON p.idProduit = lc.idProduit
+				 WHERE lc.idCommande = ?
+				 ORDER BY p.nom ASC, lc.idProduit ASC`,
+				[idCommande]
+			);
+
+			const order = orderRows[0];
+			const total = lineRows.reduce((sum, row) => sum + Number(row.prixTTC || 0), 0);
+			const ownerLabel = getOwnerInvoiceLabel(context.profile);
+			const fileName = `facture-commande-${idCommande}.pdf`;
+
+			res.setHeader('Content-Type', 'application/pdf');
+			res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+
+			const doc = new PDFDocument({ margin: 50, size: 'A4' });
+			doc.pipe(res);
+
+			doc.fontSize(20).text('FACTURE', { align: 'left' });
+			doc.moveDown(0.5);
+			doc.fontSize(11);
+			doc.text(`Commande #${order?.numeroCommandeUtilisateur || idCommande}`);
+			doc.text(`${ownerLabel.type} #${ownerLabel.id}`);
+			doc.text(`Date: ${order?.dateCommande ? new Date(order.dateCommande).toLocaleDateString('fr-FR') : 'N/A'}`);
+			doc.text(`Mode livraison: ${order?.modeLivraison || 'N/A'}`);
+			doc.text(`Paiement: ${order?.modePaiement || 'N/A'}`);
+			doc.text(`Statut: ${order?.status || 'N/A'}`);
+
+			doc.moveDown(1);
+			doc.fontSize(13).text('Lignes de commande');
+			doc.moveDown(0.5);
+
+			for (const row of lineRows) {
+				doc
+					.fontSize(10)
+					.text(`${row.nom}  |  Quantite: ${Number(row.quantite)}  |  Montant: ${Number(row.prixTTC || 0).toFixed(2)} EUR`);
+			}
+
+			doc.moveDown(1);
+			doc.fontSize(12).text(`TOTAL: ${total.toFixed(2)} EUR`, { align: 'right' });
+			doc.moveDown(2);
+			doc.fontSize(9).fillColor('#666666').text('Document genere automatiquement par ENSSAT Market.', { align: 'left' });
+
+			doc.end();
+			return undefined;
 		} catch (error) {
 			return next(error);
 		}
