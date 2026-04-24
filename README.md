@@ -1,124 +1,90 @@
-# ENSSAT Backend (Node.js + Express + Swagger + Better Auth)
+# LocalZH — Backend (Node.js + Express)
 
-Prerequisites
-- Install Node.js (>=16) and npm
-- Install MySQL server locally (no Docker)
+API REST du projet LocalZH, construite avec Node.js (ES modules), Express, MySQL et Better Auth.
 
-Setup
-1. Install MySQL if needed.
+---
+
+## Prérequis
+
+- Node.js >= 16 et npm
+- MySQL Server installé localement (sans Docker)
+
+---
+
+## Installation de A à Z
+
+### 1. Cloner le dépôt
+
+```bash
+# HTTPS
+git clone https://github.com/MaxouZouzouAlou/enssatWebBack.git
+
+# SSH
+git clone git@github.com:MaxouZouzouAlou/enssatWebBack.git
+
+cd enssatWebBack
+```
+
+### 2. Installer MySQL
 
 ```bash
 sudo apt update
 sudo apt install mysql-server -y
-```
-
-2. Check that the MySQL service is running.
-
-```bash
+sudo systemctl start mysql
 sudo systemctl status mysql --no-pager
 ```
 
-3. Make sure the MySQL `root` account can authenticate with a password.
+### 3. Configurer l'authentification MySQL
 
-On some local installs, `root` uses socket authentication and `mysql -u root
--p...` will fail even if MySQL is running. In that case, configure the local
-`root` password once:
+Sur certaines installations locales, `root` utilise l'authentification par socket. Si `mysql -u root -psqlpassword` échoue, reconfigurer le mot de passe :
 
 ```bash
 sudo mysql
 ```
 
-Inside the MySQL prompt, first check the current plugin:
+Dans le prompt MySQL :
 
 ```sql
 SELECT user, host, plugin FROM mysql.user WHERE user = 'root';
-```
 
-Then set the root password and enable password authentication:
-
-```sql
 ALTER USER 'root'@'localhost'
-IDENTIFIED WITH caching_sha2_password BY 'sqlpassword';
-```
+  IDENTIFIED WITH caching_sha2_password BY 'sqlpassword';
+-- Si la version MySQL refuse caching_sha2_password :
+-- ALTER USER 'root'@'localhost' IDENTIFIED BY 'sqlpassword';
 
-If your MySQL version rejects `caching_sha2_password`, use the default
-authentication plugin:
-
-```sql
-ALTER USER 'root'@'localhost' IDENTIFIED BY 'sqlpassword';
-```
-
-Then quit MySQL:
-
-```sql
 exit
 ```
 
-4. Check the MySQL `root` password before importing the schema.
-
-The expected local password is `sqlpassword`. Verify it with:
+Vérifier ensuite :
 
 ```bash
-# from project root
 mysql -u root -psqlpassword -e "SELECT VERSION();"
 ```
 
-You can also test interactively:
+### 4. Créer le fichier `.env`
+
+Créer un fichier `.env` à la racine du projet :
 
 ```bash
-mysql -u root -p
-```
-
-Password:
-
-```text
-sqlpassword
-```
-
-If the command fails with `Access denied`, the local MySQL `root` password is
-not `sqlpassword`. Either use the correct password in the commands below, or
-update the MySQL root password locally before continuing.
-
-5. Create `.env` and configure the required database credentials.
-
-Recommended project database values:
-
-```bash
-DB_HOST=localhost
+# Base de données
+DB_HOST=127.0.0.1
 DB_USER=root
-DB_PASSWORD=sqlpassword
+DB_PASS=sqlpassword
 DB_NAME=localzh
-```
 
-6. Initialize the database from `init.sql`:
-
-```bash
-# from project root
-mysql -u root -psqlpassword < init.sql
-```
-
-Do not apply files from `migrations/` for the normal setup. The current schema
-used by the project is fully defined in `init.sql`.
-
-If you need to recreate the database from scratch during local development:
-
-```bash
-mysql -u root -psqlpassword -e "DROP DATABASE IF EXISTS localzh;"
-mysql -u root -psqlpassword < init.sql
-```
-
-These variables are required at runtime outside tests. The backend now fails
-fast at startup when one of them is missing.
-
-6. Configure auth environment variables:
-
-```bash
+# Serveur
 PORT_OPEN=49161
 FRONTEND_ORIGIN=http://localhost:3000
+
+# Better Auth
 BETTER_AUTH_URL=http://localhost:49161
 BETTER_AUTH_SECRET=<openssl rand -base64 32>
+
+# Google OAuth (optionnel — nécessaire uniquement pour la connexion Google)
 GOOGLE_CLIENT_ID=<google-oauth-client-id>
 GOOGLE_CLIENT_SECRET=<google-oauth-client-secret>
+
+# SMTP (optionnel en dev — les liens de vérification s'affichent dans la console si absent)
 MAIL_FROM=No Reply <no-reply@localzh.com>
 SMTP_HOST=smtp-relay.brevo.com
 SMTP_PORT=587
@@ -127,133 +93,125 @@ SMTP_USER=<brevo-smtp-login>
 SMTP_PASS=<brevo-smtp-key>
 ```
 
-`GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are required only for Google
-login. The Google OAuth redirect URL must target the backend Better Auth
-callback, for example:
+> L'URL de callback Google OAuth doit pointer vers le backend :
+> `http://localhost:49161/api/auth/callback/google`
 
-```text
-http://localhost:49161/api/auth/callback/google
-```
-
-Passwords are hashed by Better Auth and stored in its `account` table. The
-`Utilisateur`, `Professionnel`, and `Producteur` tables do not store account
-passwords. Professional and producer account identity fields live in
-`Utilisateur`; `Professionnel` and `Producteur` stay as business extension
-tables keyed by the same id.
-
-Email/password accounts require email verification before login. When SMTP is
-not configured, the backend prints the verification link in the server logs for
-local development. With SMTP configured, the link is sent to the account email.
-
-The `Utilisateur` address fields are not part of registration. Professional
-registration stores company address fields on `Entreprise`.
-
-Minimum required `.env` example:
+### 5. Initialiser la base de données
 
 ```bash
-DB_HOST=localhost
-DB_USER=root
-DB_PASSWORD=sqlpassword
-DB_NAME=localzh
-PORT_OPEN=49161
-FRONTEND_ORIGIN=http://localhost:3000
-BETTER_AUTH_URL=http://localhost:49161
-BETTER_AUTH_SECRET=<openssl rand -base64 32>
+mysql -u root -psqlpassword < init.sql
 ```
 
-7. Install dependencies and start server:
+Pour réinitialiser complètement la base en cours de développement :
+
+```bash
+mysql -u root -psqlpassword < init.sql
+```
+
+Le script `init.sql` contient `DROP DATABASE IF EXISTS localzh` — il repart de zéro à chaque exécution. Ne pas appliquer les fichiers de `migrations/` pour une installation normale.
+
+### 6. Installer les dépendances
 
 ```bash
 npm install
-npm run dev   # requires nodemon
-# or
-npm start
 ```
 
-API docs are available at `http://localhost:49161/api-docs` when the server is running.
+### 7. Lancer le serveur
 
-Auth endpoints:
+```bash
+npm run dev   # développement (nodemon, rechargement automatique)
+npm start     # production
+```
 
-- `POST /api/auth/register` for local particulier/professionnel registration.
-- `GET /api/auth/profile` for current session plus domain profile.
-- `POST /api/auth/send-verification-email` to resend a verification email.
-- Better Auth native endpoints are mounted under `/api/auth/*`.
-- `GET /professionnels/:idProfessionnel/dashboard` for the authenticated
-  professional seller dashboard.
+L'API est disponible sur `http://localhost:49161`.  
+La documentation Swagger est accessible sur `http://localhost:49161/api-docs`.
 
-Description du backend
-----------------------
-Cette section décrit le fonctionnement interne et les responsabilités du
-backend afin qu'un développeur comprenne rapidement l'architecture, les
-composants clés et les usages attendus.
+---
 
-Architecture générale
-- Le backend est une API REST écrite en Node.js (ES modules) avec Express.
-- `src/index.js` initialise l'application, configure CORS, le routage et
-  Swagger (`/api-docs`).
-- Les routes sont organisées dans `src/routes/*` (ex : `products.js`,
-  `professionnels.js`, `incidents.js`, `shoppingCart.js`, `auth-profile.js`).
-- La logique réutilisable et les validations métier se trouvent dans
-  `src/services/*`.
-- La configuration de la base MySQL est centralisée dans
-  `src/server_config/db.js` (pool `mysql2`).
+## Lancer les tests
 
-Base de données
-- Schéma complet : `init.sql`. Ce script crée toutes les tables, contraintes
-  et triggers nécessaires (ex : checks, relations, triggers de validation).
-- Tables importantes : `Utilisateur`, `Professionnel`, `AuthProfile`, `Produit`,
-  `Image`, `Commande`, `LigneCommande`.
-- Les relations/propriétés importantes :
-  - `Produit.idProfessionnel` (FK vers `Professionnel`)
-  - `Produit.idImage` (FK vers `Image`)
-  - `AuthProfile` relie un utilisateur Better Auth (`user`) à son profil
-    métier (particulier/professionnel)
+```bash
+npm test
+```
 
-Authentification et sessions
-- `better-auth` gère les comptes, la vérification e-mail, et les sessions
-  (cookies). Les endpoints sont exposés sous `/api/auth/*`.
-- Les hooks dans `src/auth.js` créent et synchronisent les profils métier en
-  base quand un utilisateur se crée ou vérifie son e-mail.
-- Pour les routes protégées, le backend récupère la session via
-  `auth.api.getSession({ headers: fromNodeHeaders(req.headers) })` et utilise
-  `getBusinessProfileByAuthUserId` pour vérifier l'ownership.
+---
 
-Gestion des produits et des images
-- Les uploads d'images sont traités par `multer` et stockés dans
-  `src/images/produits/`. Le chemin relatif est enregistré en base dans
-  `Image.path`.
-- Les routes produit exposent CRUD pour les professionnels :
-  - `POST /products/professionnel/:idProfessionnel` — création (JSON ou
-    multipart/form-data avec champ `image`).
-  - `PUT /products/professionnel/:idProfessionnel/:idProduit` — modification
-    (ownership vérifié). Permet de remplacer l'image.
-  - `DELETE /products/professionnel/:idProfessionnel/:idProduit` — suppression
-    (supprime aussi le fichier image et la ligne `Image`).
-- Les réponses vers le front enrichissent les produits avec `imageData`
-  (data URL base64) pour simplifier l'affichage côté client.
+## Architecture
 
-Routes importantes (rappel)
-- Auth : `/api/auth/*` (Better Auth)
-- Produits : `/products`, `/products/professionnel/:idProfessionnel` et
-  endpoints POST/PUT/DELETE protégés pour les pros
-- Dashboard pro : `/professionnels/:idProfessionnel/dashboard`
-- Autres : `/incidents`, `/shoppingCart`, `/users` (voir `src/routes`)
+```
+src/
+├── index.js              # Point d'entrée — Express, CORS, routage, Swagger
+├── auth.js               # Configuration Better Auth + hooks de création de profil
+├── routes/               # Un fichier par domaine (products, orders, shoppingCart, incidents…)
+├── services/             # Logique métier réutilisable
+├── server_config/
+│   ├── db.js             # Pool MySQL (mysql2)
+│   └── env.js            # Lecture et validation des variables d'environnement
+└── images/produits/      # Images uploadées via multer (stockage local)
+```
 
-Démarrage local et debug
-- Installer dépendances : `npm install` (dans `enssatWebBack`).
-- Lancer en dev : `npm run dev` (nodemon) ou `npm start`.
-- Swagger UI : `http://localhost:<PORT_OPEN>/api-docs`.
-- Quand SMTP n'est pas configuré, les liens de vérification sont affichés
-  dans la console (pratique en dev).
+### Base de données
 
-Bonnes pratiques et sécurité
-- Vérifier l'ownership côté serveur pour toute modification / suppression.
-- Valider et sanitizer systématiquement les champs reçus (prix, tva, stock,
-  formats d'images) avant insertion en base.
-- En production, externaliser le stockage d'images (S3) et ne pas garder
-  d'assets persistants dans le dépôt source.
-- Protéger `BETTER_AUTH_SECRET` et autres secrets d'environnement.
+Le schéma complet est dans `init.sql`. Tables principales :
 
-Si vous souhaitez, j'ajoute des exemples `curl` pour créer/modifier/supprimer
-des produits (multipart + JSON). Indiquez si vous voulez les exemples avec
-cookie de session ou en supposant une authentification par token.
+| Table | Rôle |
+|---|---|
+| `user`, `session`, `account` | Gestion des comptes Better Auth |
+| `AuthProfile` | Lien entre un compte Better Auth et le profil métier |
+| `Utilisateur`, `Particulier`, `Professionnel` | Profils métier |
+| `Entreprise`, `Professionnel_Entreprise` | Entreprises rattachées aux pros |
+| `Produit`, `Image` | Catalogue produits |
+| `Panier`, `Panier_Produit` | Panier |
+| `Commande`, `LigneCommande` | Commandes |
+| `LieuVente`, `PointRelais` | Points de vente et relais |
+
+### Authentification
+
+- Better Auth gère les comptes, la vérification e-mail et les sessions (cookies).
+- Les endpoints sont montés sous `/api/auth/*`.
+- Les hooks dans `src/auth.js` créent et synchronisent les profils métier lors de l'inscription ou de la vérification e-mail.
+- Les routes protégées vérifient la session via `auth.api.getSession()` et l'ownership via `getBusinessProfileByAuthUserId`.
+- Sans SMTP configuré, les liens de vérification s'affichent dans la console serveur.
+
+### Gestion des images
+
+- Upload géré par `multer`, fichiers stockés dans `src/images/produits/`.
+- Le chemin relatif est enregistré en base dans `Image.path`.
+- Les réponses enrichissent les produits avec `imageData` (data URL base64) pour simplifier l'affichage côté client.
+
+### Endpoints principaux
+
+| Méthode | Route | Description |
+|---|---|---|
+| `POST` | `/api/auth/register` | Inscription particulier/professionnel |
+| `GET` | `/api/auth/profile` | Profil de la session courante |
+| `POST` | `/api/auth/send-verification-email` | Renvoyer l'e-mail de vérification |
+| `GET` | `/products` | Liste des produits |
+| `POST` | `/products/professionnel/:id` | Créer un produit (pro authentifié) |
+| `PUT` | `/products/professionnel/:id/:idProduit` | Modifier un produit |
+| `DELETE` | `/products/professionnel/:id/:idProduit` | Supprimer un produit |
+| `GET` | `/professionnels/:id/dashboard` | Dashboard vendeur |
+
+---
+
+## Bonnes pratiques
+
+- Toujours vérifier l'ownership côté serveur avant toute modification ou suppression.
+- Valider et assainir les champs reçus (prix, TVA, stock, formats d'image) avant insertion en base.
+- Ne jamais commiter `.env` ni les clés secrètes.
+- En production, externaliser le stockage d'images (S3 ou équivalent).
+
+---
+
+## Workflow Git
+
+```bash
+git pull origin main          # toujours avant de commencer
+git checkout -b feat/ma-feature
+# ... travail ...
+git add <fichiers>
+git commit -m "feat: description"
+git push origin feat/ma-feature
+```
+
+Conventions de nommage des branches et commits : `feat/`, `fix/`, `docs/`, `delete/`.
