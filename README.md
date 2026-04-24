@@ -128,6 +128,18 @@ La documentation Swagger est accessible sur `http://localhost:49161/api-docs`.
 
 ---
 
+## Comptes de test
+
+Pour explorer toutes les facettes de la plateforme via le frontend, vous pouvez utiliser les comptes suivants (Mot de passe : `Test1234@`) :
+
+| Type de compte | Email | Particularité |
+|---|---|---|
+| **Super Admin** | `testsuperadmin1@gmail.com` | Accès à la gestion des comptes, entreprises, produits et tickets incidents. |
+| **Producteur** | `testprofessionnel1@gmail.com` | Gère **deux entreprises** (Les fruits de mamie & Conserverie du Trégor). |
+| **Particulier** | `client.bulk+008@localzh.test` | Possède déjà un **bon d'achat actif** et un historique de commandes. |
+
+---
+
 ## Lancer les tests
 
 ```bash
