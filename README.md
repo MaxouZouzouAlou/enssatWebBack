@@ -180,3 +180,80 @@ Auth endpoints:
 - Better Auth native endpoints are mounted under `/api/auth/*`.
 - `GET /professionnels/:idProfessionnel/dashboard` for the authenticated
   professional seller dashboard.
+
+Description du backend
+----------------------
+Cette section décrit le fonctionnement interne et les responsabilités du
+backend afin qu'un développeur comprenne rapidement l'architecture, les
+composants clés et les usages attendus.
+
+Architecture générale
+- Le backend est une API REST écrite en Node.js (ES modules) avec Express.
+- `src/index.js` initialise l'application, configure CORS, le routage et
+  Swagger (`/api-docs`).
+- Les routes sont organisées dans `src/routes/*` (ex : `products.js`,
+  `professionnels.js`, `incidents.js`, `shoppingCart.js`, `auth-profile.js`).
+- La logique réutilisable et les validations métier se trouvent dans
+  `src/services/*`.
+- La configuration de la base MySQL est centralisée dans
+  `src/server_config/db.js` (pool `mysql2`).
+
+Base de données
+- Schéma complet : `init.sql`. Ce script crée toutes les tables, contraintes
+  et triggers nécessaires (ex : checks, relations, triggers de validation).
+- Tables importantes : `Utilisateur`, `Professionnel`, `AuthProfile`, `Produit`,
+  `Image`, `Commande`, `LigneCommande`.
+- Les relations/propriétés importantes :
+  - `Produit.idProfessionnel` (FK vers `Professionnel`)
+  - `Produit.idImage` (FK vers `Image`)
+  - `AuthProfile` relie un utilisateur Better Auth (`user`) à son profil
+    métier (particulier/professionnel)
+
+Authentification et sessions
+- `better-auth` gère les comptes, la vérification e-mail, et les sessions
+  (cookies). Les endpoints sont exposés sous `/api/auth/*`.
+- Les hooks dans `src/auth.js` créent et synchronisent les profils métier en
+  base quand un utilisateur se crée ou vérifie son e-mail.
+- Pour les routes protégées, le backend récupère la session via
+  `auth.api.getSession({ headers: fromNodeHeaders(req.headers) })` et utilise
+  `getBusinessProfileByAuthUserId` pour vérifier l'ownership.
+
+Gestion des produits et des images
+- Les uploads d'images sont traités par `multer` et stockés dans
+  `src/images/produits/`. Le chemin relatif est enregistré en base dans
+  `Image.path`.
+- Les routes produit exposent CRUD pour les professionnels :
+  - `POST /products/professionnel/:idProfessionnel` — création (JSON ou
+    multipart/form-data avec champ `image`).
+  - `PUT /products/professionnel/:idProfessionnel/:idProduit` — modification
+    (ownership vérifié). Permet de remplacer l'image.
+  - `DELETE /products/professionnel/:idProfessionnel/:idProduit` — suppression
+    (supprime aussi le fichier image et la ligne `Image`).
+- Les réponses vers le front enrichissent les produits avec `imageData`
+  (data URL base64) pour simplifier l'affichage côté client.
+
+Routes importantes (rappel)
+- Auth : `/api/auth/*` (Better Auth)
+- Produits : `/products`, `/products/professionnel/:idProfessionnel` et
+  endpoints POST/PUT/DELETE protégés pour les pros
+- Dashboard pro : `/professionnels/:idProfessionnel/dashboard`
+- Autres : `/incidents`, `/shoppingCart`, `/users` (voir `src/routes`)
+
+Démarrage local et debug
+- Installer dépendances : `npm install` (dans `enssatWebBack`).
+- Lancer en dev : `npm run dev` (nodemon) ou `npm start`.
+- Swagger UI : `http://localhost:<PORT_OPEN>/api-docs`.
+- Quand SMTP n'est pas configuré, les liens de vérification sont affichés
+  dans la console (pratique en dev).
+
+Bonnes pratiques et sécurité
+- Vérifier l'ownership côté serveur pour toute modification / suppression.
+- Valider et sanitizer systématiquement les champs reçus (prix, tva, stock,
+  formats d'images) avant insertion en base.
+- En production, externaliser le stockage d'images (S3) et ne pas garder
+  d'assets persistants dans le dépôt source.
+- Protéger `BETTER_AUTH_SECRET` et autres secrets d'environnement.
+
+Si vous souhaitez, j'ajoute des exemples `curl` pour créer/modifier/supprimer
+des produits (multipart + JSON). Indiquez si vous voulez les exemples avec
+cookie de session ou en supposant une authentification par token.
