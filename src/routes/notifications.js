@@ -51,6 +51,27 @@ router.delete('/:id', requireAuth, async (req, res) => {
 	}
 });
 
+/**
+ * @openapi
+ * /notifications/{id}/read:
+ *   patch:
+ *     summary: Mark a specific notification as read
+ *     tags:
+ *       - Notifications
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Notification marked as read
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Server error
+ */
 router.patch('/:id/read', requireAuth, async (req, res) => {
 	try {
 		await markNotificationRead(req.params.id, req.authSession.user.id);

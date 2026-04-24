@@ -75,6 +75,21 @@ export function createLoyaltyRouter({
 		return { session, profile };
 	}
 
+	/**
+	 * @openapi
+	 * /loyalty/me:
+	 *   get:
+	 *     summary: Get loyalty status and challenges for the current user
+	 *     tags:
+	 *       - Loyalty
+	 *     responses:
+	 *       200:
+	 *         description: Loyalty status, challenges, and vouchers retrieved
+	 *       401:
+	 *         description: Unauthorized
+	 *       403:
+	 *         description: Forbidden (Personal account required)
+	 */
 	router.get('/me', async (req, res, next) => {
 	  try {
 		const authContext = await requireParticulier(req, res);
@@ -157,6 +172,33 @@ export function createLoyaltyRouter({
 	  }
 	});
 
+	/**
+	 * @openapi
+	 * /loyalty/challenges/{code}/claim:
+	 *   post:
+	 *     summary: Claim a completed loyalty challenge
+	 *     tags:
+	 *       - Loyalty
+	 *     parameters:
+	 *       - in: path
+	 *         name: code
+	 *         required: true
+	 *         schema:
+	 *           type: string
+	 *     responses:
+	 *       201:
+	 *         description: Challenge claimed successfully
+	 *       400:
+	 *         description: Invalid challenge code
+	 *       401:
+	 *         description: Unauthorized
+	 *       403:
+	 *         description: Forbidden (Personal account required)
+	 *       404:
+	 *         description: Challenge not found
+	 *       409:
+	 *         description: Challenge conditions not met or maximum claims reached
+	 */
 	router.post('/challenges/:code/claim', async (req, res, next) => {
 	  const authContext = await requireParticulier(req, res).catch(next);
 	  if (!authContext) return;
@@ -267,6 +309,34 @@ export function createLoyaltyRouter({
 	  }
 	});
 
+	/**
+	 * @openapi
+	 * /loyalty/redeem-voucher:
+	 *   post:
+	 *     summary: Redeem a voucher using loyalty points
+	 *     tags:
+	 *       - Loyalty
+	 *     requestBody:
+	 *       required: true
+	 *       content:
+	 *         application/json:
+	 *           schema:
+	 *             type: object
+	 *             properties:
+	 *               pointsToSpend:
+	 *                 type: integer
+	 *     responses:
+	 *       201:
+	 *         description: Voucher created successfully
+	 *       400:
+	 *         description: Invalid points provided
+	 *       401:
+	 *         description: Unauthorized
+	 *       403:
+	 *         description: Forbidden (Personal account required)
+	 *       409:
+	 *         description: Insufficient points
+	 */
 	router.post('/redeem-voucher', async (req, res, next) => {
 	  const authContext = await requireParticulier(req, res).catch(next);
 	  if (!authContext) return;

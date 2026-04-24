@@ -45,6 +45,27 @@ function normalizeReviewPayload(body = {}) {
   };
 }
 
+/**
+ * @openapi
+ * /reviews/products/{idProduit}:
+ *   get:
+ *     summary: Get reviews for a specific product
+ *     tags:
+ *       - Reviews
+ *     parameters:
+ *       - in: path
+ *         name: idProduit
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Product reviews retrieved successfully
+ *       400:
+ *         description: Invalid product ID
+ *       404:
+ *         description: Product not found
+ */
 router.get('/products/:idProduit', async (req, res, next) => {
   try {
     const idProduit = Number(req.params.idProduit);
@@ -99,6 +120,45 @@ router.get('/products/:idProduit', async (req, res, next) => {
   }
 });
 
+/**
+ * @openapi
+ * /reviews/products/{idProduit}:
+ *   post:
+ *     summary: Add or update a review for a specific product
+ *     tags:
+ *       - Reviews
+ *     parameters:
+ *       - in: path
+ *         name: idProduit
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               note:
+ *                 type: integer
+ *                 minimum: 1
+ *                 maximum: 5
+ *               commentaire:
+ *                 type: string
+ *                 maxLength: 1000
+ *     responses:
+ *       201:
+ *         description: Product review added or updated successfully
+ *       400:
+ *         description: Invalid input or product ID
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden (Personal account required)
+ *       404:
+ *         description: Product not found
+ */
 router.post('/products/:idProduit', async (req, res, next) => {
   try {
     const idProduit = Number(req.params.idProduit);
@@ -142,6 +202,27 @@ router.post('/products/:idProduit', async (req, res, next) => {
   }
 });
 
+/**
+ * @openapi
+ * /reviews/professionnels/{idProfessionnel}:
+ *   get:
+ *     summary: Get reviews for a specific professional
+ *     tags:
+ *       - Reviews
+ *     parameters:
+ *       - in: path
+ *         name: idProfessionnel
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Professional reviews retrieved successfully
+ *       400:
+ *         description: Invalid professional ID
+ *       404:
+ *         description: Professional not found
+ */
 router.get('/professionnels/:idProfessionnel', async (req, res, next) => {
   try {
     const idProfessionnel = Number(req.params.idProfessionnel);
@@ -227,6 +308,45 @@ router.get('/professionnels/:idProfessionnel', async (req, res, next) => {
   }
 });
 
+/**
+ * @openapi
+ * /reviews/professionnels/{idProfessionnel}:
+ *   post:
+ *     summary: Add or update a review for a specific professional
+ *     tags:
+ *       - Reviews
+ *     parameters:
+ *       - in: path
+ *         name: idProfessionnel
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               note:
+ *                 type: integer
+ *                 minimum: 1
+ *                 maximum: 5
+ *               commentaire:
+ *                 type: string
+ *                 maxLength: 1000
+ *     responses:
+ *       201:
+ *         description: Professional review added or updated successfully
+ *       400:
+ *         description: Invalid input or professional ID
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden (Personal account required)
+ *       404:
+ *         description: Professional not found
+ */
 router.post('/professionnels/:idProfessionnel', async (req, res, next) => {
   try {
     const idProfessionnel = Number(req.params.idProfessionnel);

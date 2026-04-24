@@ -73,6 +73,8 @@ async function requireProfessionalSession(req, res, next) {
  *   get:
  *     summary: Get seller dashboard analytics
  *     description: Returns metrics and chart data for the authenticated professional account.
+ *     tags:
+ *       - Professionnels
  *     parameters:
  *       - in: path
  *         name: idProfessionnel
@@ -309,6 +311,40 @@ router.get('/:idProfessionnel/dashboard', requireProfessionalSession, async (req
 	}
 });
 
+/**
+ * @openapi
+ * /professionnels/{idProfessionnel}/documents/commande/{idCommande}/facture:
+ *   get:
+ *     summary: Get text invoice for a specific order
+ *     tags:
+ *       - Professionnels
+ *     parameters:
+ *       - in: path
+ *         name: idProfessionnel
+ *         required: true
+ *         schema:
+ *           type: integer
+ *       - in: path
+ *         name: idCommande
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Text invoice
+ *         content:
+ *           text/plain:
+ *             schema:
+ *               type: string
+ *       400:
+ *         description: Invalid parameters
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden
+ *       404:
+ *         description: Order not found
+ */
 router.get('/:idProfessionnel/documents/commande/:idCommande/facture', requireProfessionalSession, async (req, res, next) => {
 	const idProfessionnel = Number(req.params.idProfessionnel);
 	const idCommande = Number(req.params.idCommande);
@@ -399,6 +435,41 @@ router.get('/:idProfessionnel/documents/commande/:idCommande/facture', requirePr
 	}
 });
 
+/**
+ * @openapi
+ * /professionnels/{idProfessionnel}/documents/commande/{idCommande}/facture.pdf:
+ *   get:
+ *     summary: Get PDF invoice for a specific order
+ *     tags:
+ *       - Professionnels
+ *     parameters:
+ *       - in: path
+ *         name: idProfessionnel
+ *         required: true
+ *         schema:
+ *           type: integer
+ *       - in: path
+ *         name: idCommande
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: PDF invoice
+ *         content:
+ *           application/pdf:
+ *             schema:
+ *               type: string
+ *               format: binary
+ *       400:
+ *         description: Invalid parameters
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden
+ *       404:
+ *         description: Order not found
+ */
 router.get('/:idProfessionnel/documents/commande/:idCommande/facture.pdf', requireProfessionalSession, async (req, res, next) => {
 	const idProfessionnel = Number(req.params.idProfessionnel);
 	const idCommande = Number(req.params.idCommande);
@@ -507,6 +578,33 @@ router.get('/:idProfessionnel/documents/commande/:idCommande/facture.pdf', requi
 	}
 });
 
+/**
+ * @openapi
+ * /professionnels/{idProfessionnel}/documents/ventes.csv:
+ *   get:
+ *     summary: Export sales data as CSV
+ *     tags:
+ *       - Professionnels
+ *     parameters:
+ *       - in: path
+ *         name: idProfessionnel
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: CSV file of sales
+ *         content:
+ *           text/csv:
+ *             schema:
+ *               type: string
+ *       400:
+ *         description: Invalid parameters
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden
+ */
 router.get('/:idProfessionnel/documents/ventes.csv', requireProfessionalSession, async (req, res, next) => {
 	const idProfessionnel = Number(req.params.idProfessionnel);
 	const requestedCompanyId = parseCompanyId(req.query?.idEntreprise);

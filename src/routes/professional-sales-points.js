@@ -62,6 +62,34 @@ export function createProfessionalSalesPointsRouter({
 		return { ...context, company, idEntreprise, idProfessionnel };
 	}
 
+	/**
+	 * @openapi
+	 * /professional-sales-points/{idProfessionnel}/entreprises/{idEntreprise}/lieux-vente:
+	 *   get:
+	 *     summary: List sales points for a company
+	 *     tags:
+	 *       - Professional Sales Points
+	 *     parameters:
+	 *       - in: path
+	 *         name: idProfessionnel
+	 *         required: true
+	 *         schema:
+	 *           type: integer
+	 *       - in: path
+	 *         name: idEntreprise
+	 *         required: true
+	 *         schema:
+	 *           type: integer
+	 *     responses:
+	 *       200:
+	 *         description: List of sales points
+	 *       400:
+	 *         description: Bad request
+	 *       401:
+	 *         description: Unauthorized
+	 *       403:
+	 *         description: Forbidden
+	 */
 	router.get('/:idProfessionnel/entreprises/:idEntreprise/lieux-vente', async (req, res, next) => {
 		try {
 			const context = await requireManagedCompany(req, res);
@@ -77,6 +105,43 @@ export function createProfessionalSalesPointsRouter({
 		}
 	});
 
+	/**
+	 * @openapi
+	 * /professional-sales-points/{idProfessionnel}/entreprises/{idEntreprise}/lieux-vente/attach:
+	 *   post:
+	 *     summary: Attach an existing sales point to a company
+	 *     tags:
+	 *       - Professional Sales Points
+	 *     parameters:
+	 *       - in: path
+	 *         name: idProfessionnel
+	 *         required: true
+	 *         schema:
+	 *           type: integer
+	 *       - in: path
+	 *         name: idEntreprise
+	 *         required: true
+	 *         schema:
+	 *           type: integer
+	 *     requestBody:
+	 *       required: true
+	 *       content:
+	 *         application/json:
+	 *           schema:
+	 *             type: object
+	 *             properties:
+	 *               idLieu:
+	 *                 type: integer
+	 *     responses:
+	 *       201:
+	 *         description: Sales point attached successfully
+	 *       400:
+	 *         description: Bad request
+	 *       401:
+	 *         description: Unauthorized
+	 *       403:
+	 *         description: Forbidden
+	 */
 	router.post('/:idProfessionnel/entreprises/:idEntreprise/lieux-vente/attach', express.json(), async (req, res, next) => {
 		try {
 			const context = await requireManagedCompany(req, res);
@@ -94,6 +159,51 @@ export function createProfessionalSalesPointsRouter({
 		}
 	});
 
+	/**
+	 * @openapi
+	 * /professional-sales-points/{idProfessionnel}/entreprises/{idEntreprise}/lieux-vente:
+	 *   post:
+	 *     summary: Create a new sales point and attach to a company
+	 *     tags:
+	 *       - Professional Sales Points
+	 *     parameters:
+	 *       - in: path
+	 *         name: idProfessionnel
+	 *         required: true
+	 *         schema:
+	 *           type: integer
+	 *       - in: path
+	 *         name: idEntreprise
+	 *         required: true
+	 *         schema:
+	 *           type: integer
+	 *     requestBody:
+	 *       required: true
+	 *       content:
+	 *         application/json:
+	 *           schema:
+	 *             type: object
+	 *             properties:
+	 *               nom:
+	 *                 type: string
+	 *               adresse_ligne:
+	 *                 type: string
+	 *               code_postal:
+	 *                 type: string
+	 *               ville:
+	 *                 type: string
+	 *               horaires:
+	 *                 type: string
+	 *     responses:
+	 *       201:
+	 *         description: Sales point created and attached successfully
+	 *       400:
+	 *         description: Bad request
+	 *       401:
+	 *         description: Unauthorized
+	 *       403:
+	 *         description: Forbidden
+	 */
 	router.post('/:idProfessionnel/entreprises/:idEntreprise/lieux-vente', express.json(), async (req, res, next) => {
 		try {
 			const context = await requireManagedCompany(req, res);
@@ -106,6 +216,39 @@ export function createProfessionalSalesPointsRouter({
 		}
 	});
 
+	/**
+	 * @openapi
+	 * /professional-sales-points/{idProfessionnel}/entreprises/{idEntreprise}/lieux-vente/{idLieu}:
+	 *   delete:
+	 *     summary: Detach a sales point from a company
+	 *     tags:
+	 *       - Professional Sales Points
+	 *     parameters:
+	 *       - in: path
+	 *         name: idProfessionnel
+	 *         required: true
+	 *         schema:
+	 *           type: integer
+	 *       - in: path
+	 *         name: idEntreprise
+	 *         required: true
+	 *         schema:
+	 *           type: integer
+	 *       - in: path
+	 *         name: idLieu
+	 *         required: true
+	 *         schema:
+	 *           type: integer
+	 *     responses:
+	 *       204:
+	 *         description: Sales point detached successfully
+	 *       400:
+	 *         description: Bad request
+	 *       401:
+	 *         description: Unauthorized
+	 *       403:
+	 *         description: Forbidden
+	 */
 	router.delete('/:idProfessionnel/entreprises/:idEntreprise/lieux-vente/:idLieu', async (req, res, next) => {
 		try {
 			const context = await requireManagedCompany(req, res);

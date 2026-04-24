@@ -32,6 +32,19 @@ async function requireIncidentActor(req, res, next) {
 	}
 }
 
+/**
+ * @openapi
+ * /incidents:
+ *   get:
+ *     summary: List incident tickets for the authenticated actor
+ *     tags:
+ *       - Incidents
+ *     responses:
+ *       200:
+ *         description: List of tickets and actor permissions
+ *       401:
+ *         description: Unauthorized
+ */
 router.get('/', requireIncidentActor, async (req, res, next) => {
 	try {
 		const tickets = await listIncidentTickets(req.incidentActor);
@@ -44,6 +57,34 @@ router.get('/', requireIncidentActor, async (req, res, next) => {
 	}
 });
 
+/**
+ * @openapi
+ * /incidents:
+ *   post:
+ *     summary: Create a new incident ticket
+ *     tags:
+ *       - Incidents
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               sujet:
+ *                 type: string
+ *               description:
+ *                 type: string
+ *               idCommande:
+ *                 type: integer
+ *     responses:
+ *       201:
+ *         description: Ticket created
+ *       400:
+ *         description: Bad request
+ *       401:
+ *         description: Unauthorized
+ */
 router.post('/', requireIncidentActor, async (req, res, next) => {
 	try {
 		const detail = await createIncidentTicket(req.incidentActor, req.body || {});
@@ -53,6 +94,27 @@ router.post('/', requireIncidentActor, async (req, res, next) => {
 	}
 });
 
+/**
+ * @openapi
+ * /incidents/{idTicket}:
+ *   get:
+ *     summary: Get incident ticket details by ID
+ *     tags:
+ *       - Incidents
+ *     parameters:
+ *       - in: path
+ *         name: idTicket
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Ticket details retrieved successfully
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Ticket not found
+ */
 router.get('/:idTicket', requireIncidentActor, async (req, res, next) => {
 	try {
 		const detail = await getIncidentTicketDetail(req.incidentActor, req.params.idTicket);
@@ -62,6 +124,38 @@ router.get('/:idTicket', requireIncidentActor, async (req, res, next) => {
 	}
 });
 
+/**
+ * @openapi
+ * /incidents/{idTicket}/reponses:
+ *   post:
+ *     summary: Add a reply to an incident ticket
+ *     tags:
+ *       - Incidents
+ *     parameters:
+ *       - in: path
+ *         name: idTicket
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               message:
+ *                 type: string
+ *     responses:
+ *       201:
+ *         description: Reply added successfully
+ *       400:
+ *         description: Bad request
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Ticket not found
+ */
 router.post('/:idTicket/reponses', requireIncidentActor, async (req, res, next) => {
 	try {
 		const detail = await addIncidentReply(req.incidentActor, req.params.idTicket, req.body || {});
@@ -71,6 +165,39 @@ router.post('/:idTicket/reponses', requireIncidentActor, async (req, res, next) 
 	}
 });
 
+/**
+ * @openapi
+ * /incidents/{idTicket}/status:
+ *   patch:
+ *     summary: Update the status of an incident ticket
+ *     tags:
+ *       - Incidents
+ *     parameters:
+ *       - in: path
+ *         name: idTicket
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               status:
+ *                 type: string
+ *                 enum: [ouvert, resolu, ferme]
+ *     responses:
+ *       200:
+ *         description: Status updated successfully
+ *       400:
+ *         description: Bad request
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Ticket not found
+ */
 router.patch('/:idTicket/status', requireIncidentActor, async (req, res, next) => {
 	try {
 		const detail = await updateIncidentStatus(req.incidentActor, req.params.idTicket, req.body || {});

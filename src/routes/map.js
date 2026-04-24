@@ -17,9 +17,13 @@ function isMissingTableError(err) {
  * /map/lieux:
  *   get:
  *     summary: Liste des lieux de vente avec indicateur du nombre d'offres
+ *     tags:
+ *       - Map
  *     responses:
  *       200:
  *         description: Lieux de vente pour carte interactive
+ *       500:
+ *         description: Server error
  */
 router.get('/lieux', async (req, res, next) => {
   try {
@@ -110,6 +114,8 @@ router.get('/lieux', async (req, res, next) => {
  * /map/lieux/{idLieu}/offres:
  *   get:
  *     summary: Offres visibles sur un lieu de vente
+ *     tags:
+ *       - Map
  *     parameters:
  *       - in: path
  *         name: idLieu
@@ -119,6 +125,12 @@ router.get('/lieux', async (req, res, next) => {
  *     responses:
  *       200:
  *         description: Detail du lieu et offres associees
+ *       400:
+ *         description: Invalid lieu ID
+ *       404:
+ *         description: Lieu not found
+ *       500:
+ *         description: Server error
  */
 router.get('/lieux/:idLieu/offres', async (req, res, next) => {
   const idLieu = Number(req.params.idLieu);

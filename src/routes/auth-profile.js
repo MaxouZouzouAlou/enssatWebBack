@@ -18,6 +18,43 @@ import {
 
 const router = express.Router();
 
+/**
+ * @openapi
+ * /auth-profile/register:
+ *   post:
+ *     summary: Register a new user
+ *     tags:
+ *       - Auth Profile
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               email:
+ *                 type: string
+ *               password:
+ *                 type: string
+ *               nom:
+ *                 type: string
+ *               prenom:
+ *                 type: string
+ *               accountType:
+ *                 type: string
+ *               entreprise:
+ *                 type: object
+ *                 properties:
+ *                   siret:
+ *                     type: string
+ *     responses:
+ *       201:
+ *         description: User registered successfully
+ *       400:
+ *         description: Validation error
+ *       409:
+ *         description: Conflict (e.g. email or SIRET already in use)
+ */
 router.post('/register', express.json(), async (req, res) => {
 	try {
 		const payload = validateRegistrationPayload(req.body || {});
@@ -58,6 +95,19 @@ router.post('/register', express.json(), async (req, res) => {
 	}
 });
 
+/**
+ * @openapi
+ * /auth-profile/profile:
+ *   get:
+ *     summary: Get the authenticated user's profile
+ *     tags:
+ *       - Auth Profile
+ *     responses:
+ *       200:
+ *         description: User profile retrieved successfully
+ *       401:
+ *         description: Unauthorized
+ */
 router.get('/profile', async (req, res) => {
 	try {
 		const session = await auth.api.getSession({
@@ -104,6 +154,34 @@ router.get('/profile', async (req, res) => {
 	}
 });
 
+/**
+ * @openapi
+ * /auth-profile/profile/address:
+ *   put:
+ *     summary: Update the authenticated user's address
+ *     tags:
+ *       - Auth Profile
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               adresse_ligne:
+ *                 type: string
+ *               code_postal:
+ *                 type: string
+ *               ville:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Address updated successfully
+ *       400:
+ *         description: Validation error
+ *       401:
+ *         description: Unauthorized
+ */
 router.put('/profile/address', express.json(), async (req, res) => {
 	try {
 		const session = await auth.api.getSession({
@@ -121,6 +199,34 @@ router.put('/profile/address', express.json(), async (req, res) => {
 	}
 });
 
+/**
+ * @openapi
+ * /auth-profile/profile:
+ *   put:
+ *     summary: Update the authenticated user's profile details
+ *     tags:
+ *       - Auth Profile
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               nom:
+ *                 type: string
+ *               prenom:
+ *                 type: string
+ *               num_telephone:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Profile updated successfully
+ *       400:
+ *         description: Validation error
+ *       401:
+ *         description: Unauthorized
+ */
 router.put('/profile', express.json(), async (req, res) => {
 	try {
 		const session = await auth.api.getSession({
@@ -138,6 +244,40 @@ router.put('/profile', express.json(), async (req, res) => {
 	}
 });
 
+/**
+ * @openapi
+ * /auth-profile/profile/companies:
+ *   post:
+ *     summary: Create a company for the authenticated professional user
+ *     tags:
+ *       - Auth Profile
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               nom:
+ *                 type: string
+ *               siret:
+ *                 type: string
+ *               adresse_ligne:
+ *                 type: string
+ *               code_postal:
+ *                 type: string
+ *               ville:
+ *                 type: string
+ *     responses:
+ *       201:
+ *         description: Company created successfully
+ *       400:
+ *         description: Validation error
+ *       401:
+ *         description: Unauthorized
+ *       409:
+ *         description: Conflict (e.g. SIRET already in use)
+ */
 router.post('/profile/companies', express.json(), async (req, res) => {
 	try {
 		const session = await auth.api.getSession({
@@ -155,6 +295,27 @@ router.post('/profile/companies', express.json(), async (req, res) => {
 	}
 });
 
+/**
+ * @openapi
+ * /auth-profile/profile/companies/{idEntreprise}:
+ *   delete:
+ *     summary: Delete a company from the authenticated professional user's profile
+ *     tags:
+ *       - Auth Profile
+ *     parameters:
+ *       - in: path
+ *         name: idEntreprise
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Company deleted successfully
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Company not found
+ */
 router.delete('/profile/companies/:idEntreprise', async (req, res) => {
 	try {
 		const session = await auth.api.getSession({
@@ -172,6 +333,30 @@ router.delete('/profile/companies/:idEntreprise', async (req, res) => {
 	}
 });
 
+/**
+ * @openapi
+ * /auth-profile/profile/change-email:
+ *   post:
+ *     summary: Request to change the authenticated user's email address
+ *     tags:
+ *       - Auth Profile
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               newEmail:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Verification email sent
+ *       400:
+ *         description: Validation error
+ *       401:
+ *         description: Unauthorized
+ */
 router.post('/profile/change-email', express.json(), async (req, res) => {
 	try {
 		const result = await auth.api.changeEmail({
@@ -191,6 +376,19 @@ router.post('/profile/change-email', express.json(), async (req, res) => {
 	}
 });
 
+/**
+ * @openapi
+ * /auth-profile/profile:
+ *   delete:
+ *     summary: Delete the authenticated user's personal account
+ *     tags:
+ *       - Auth Profile
+ *     responses:
+ *       200:
+ *         description: Account deleted successfully
+ *       401:
+ *         description: Unauthorized
+ */
 router.delete('/profile', async (req, res) => {
 	try {
 		const session = await auth.api.getSession({
