@@ -54,6 +54,7 @@ export async function resolveIncidentActor(authUser) {
 		prenom: row.prenom,
 		email: row.email,
 		isAdmin: Boolean(row.adminId),
+		superAdminId: row.superAdminId || row.adminId || null,
 		isSuperAdmin: Boolean(row.superAdminId)
 	};
 }
@@ -106,7 +107,13 @@ export async function getIncidentTicketDetail(actor, idTicket) {
 			superAdminUser.email AS authorEmail
 		 FROM IncidentTicketReponse reponse
 		 JOIN SuperAdmin superAdmin ON superAdmin.idAdmin = reponse.idSuperAdmin
-		 JOIN Utilisateur superAdminUser ON superAdminUser.id = superAdmin.idAdmin
+		 JOIN Utilisateur superAdminUser ON superAdminUser.id = (
+		 	SELECT u2.id
+		 	FROM Utilisateur u2
+		 	WHERE u2.idAdmin = superAdmin.idAdmin
+		 	ORDER BY u2.id ASC
+		 	LIMIT 1
+		 )
 		 WHERE reponse.idTicket = ?
 		 ORDER BY reponse.dateCreation ASC, reponse.idReponse ASC`,
 		[idTicket]
@@ -179,7 +186,7 @@ export async function addIncidentReply(actor, idTicket, payload) {
 		`INSERT INTO IncidentTicketReponse
 		 (idTicket, idSuperAdmin, message)
 		 VALUES (?, ?, ?)`,
-		[idTicket, actor.id, message]
+		[idTicket, actor.superAdminId, message]
 	);
 
 	const detail = await getIncidentTicketDetail(actor, idTicket);
@@ -336,6 +343,11 @@ function assertSuperAdmin(actor) {
 	if (!actor.isSuperAdmin) {
 		throw new IncidentError(403, 'Compte super administrateur requis.');
 	}
+
+	const superAdminId = Number(actor.superAdminId);
+	if (!Number.isInteger(superAdminId) || superAdminId <= 0) {
+		throw new IncidentError(403, 'Identite super administrateur invalide.');
+	}
 }
 
 function mapTicketRow(row) {
@@ -428,9 +440,9 @@ async function notifyIncidentStatus(ticket, actor, previousStatus) {
 
 async function getSuperAdminEmails() {
 	const [rows] = await pool.execute(
-		`SELECT u.email
+		`SELECT DISTINCT u.email
 		 FROM SuperAdmin superAdmin
-		 JOIN Utilisateur u ON u.id = superAdmin.idAdmin
+		 JOIN Utilisateur u ON u.idAdmin = superAdmin.idAdmin
 		 WHERE u.email IS NOT NULL AND u.email <> ''`
 	);
 	return rows.map((row) => row.email);

@@ -1307,10 +1307,7 @@ SELECT
     idx,
     particulierId,
     orderRank,
-    DATE_SUB(
-        DATE_ADD('2026-04-20 10:30:00', INTERVAL idx HOUR),
-        INTERVAL ((idx * 5) + (orderRank * 9)) DAY
-    ),
+    DATE_SUB(NOW(), INTERVAL MOD(((idx - 1) * 3) + (orderRank - 1), 60) DAY),
     CASE orderRank
         WHEN 1 THEN 'domicile'
         WHEN 2 THEN 'point_relais'
@@ -1380,7 +1377,7 @@ SELECT
         2
     ) AS prixTotal,
     CASE
-        WHEN TIMESTAMPDIFF(DAY, o.dateCommande, '2026-04-24 12:00:00') >= 14 THEN 'confirmee'
+        WHEN TIMESTAMPDIFF(DAY, o.dateCommande, NOW()) >= 14 THEN 'confirmee'
         ELSE 'en_attente'
     END AS status,
     o.idParticulier,
