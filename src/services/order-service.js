@@ -664,20 +664,31 @@ export async function previewCheckout({
 		const relayOptions = await loadRelayOptions(conn);
 		const pickupAvailability = await loadPickupAvailability(conn, cart.idPanier);
 		const itemPickupOptions = buildItemPickupOptions(items, pickupAvailability);
-		const originAddress = modeLivraison === 'lieu_vente'
-			? (formatAddress(adresseLivraison) || resolveDefaultDeliveryAddress(profile))
-			: null;
+
 		let originCoordinates = null;
-		if (originAddress && typeof geocodeAddressFn === 'function') {
-			try {
-				originCoordinates = await geocodeAddressFn(originAddress);
-			} catch {
-				originCoordinates = null;
+		if (modeLivraison === 'lieu_vente') {
+			const originAddress = formatAddress(adresseLivraison) || resolveDefaultDeliveryAddress(profile);
+			if (originAddress && typeof geocodeAddressFn === 'function') {
+				try {
+					originCoordinates = await geocodeAddressFn(originAddress);
+				} catch {
+					originCoordinates = null;
+				}
+			}
+
+			// If still no origin coordinates, use the first available pickup point as a fallback
+			if (!originCoordinates) {
+				const allPoints = buildUniquePickupPoints(itemPickupOptions);
+				if (allPoints.length > 0) {
+					originCoordinates = allPoints[0].coordinates;
+				}
+			}
+
+			if (!originCoordinates) {
+				throw new CheckoutError(422, 'Impossible de déterminer un point de départ pour le retrait.');
 			}
 		}
-		if (modeLivraison === 'lieu_vente' && !originCoordinates) {
-			throw new CheckoutError(422, 'Impossible de géocoder votre adresse de départ. Renseignez une adresse personnelle exploitable avant de calculer le trajet.');
-		}
+
 		const delivery = buildDeliverySelection({
 			modeLivraison,
 			profile,
