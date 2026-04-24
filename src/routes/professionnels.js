@@ -236,9 +236,9 @@ router.get('/:idProfessionnel/dashboard', requireProfessionalSession, async (req
 				c.modeLivraison,
 				c.status,
 				ROUND(COALESCE(SUM(lc.prixTTC), 0), 2) AS total
-			 FROM LigneCommande lc
+			 FROM Commande c
+			 JOIN LigneCommande lc ON lc.idCommande = c.idCommande
 			 JOIN Produit p ON p.idProduit = lc.idProduit
-			 JOIN Commande c ON c.idCommande = lc.idCommande
 			 WHERE p.idProfessionnel = ?${companyFilter}
 			 GROUP BY c.idCommande, c.dateCommande, c.modeLivraison, c.status
 			 ORDER BY c.dateCommande DESC

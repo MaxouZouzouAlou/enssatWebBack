@@ -129,11 +129,7 @@ export function createOrdersRouter({
 		}
 
 		const owner = getCartOwner(profile);
-		if (!owner) {
-			res.status(404).json({ error: 'Aucun panier disponible pour ce compte.' });
-			return null;
-		}
-
+		// owner is optional for history/detail but required for checkout
 		return { owner, profile, session };
 	}
 
