@@ -642,7 +642,7 @@ test('GET /orders returns authenticated order history with payment mode', async 
 	const fakeDb = {
 		query: async (sql, params) => {
 			assert.match(sql, /FROM Commande c/);
-			assert.deepEqual(params, [10]);
+			assert.deepEqual(params, [10, 10]);
 			return [[{
 				idCommande: 17,
 				numeroCommandeUtilisateur: 3,
@@ -676,7 +676,7 @@ test('GET /orders/:idCommande returns order detail with delivery and pickup assi
 	const fakeDb = {
 		query: async (sql, params) => {
 			if (sql.includes('WHERE c.idCommande = ?')) {
-				assert.deepEqual(params, [33, 10]);
+				assert.deepEqual(params, [10, 33, 10]);
 				return [[{
 					idCommande: 33,
 					numeroCommandeUtilisateur: 7,
@@ -842,7 +842,7 @@ test('GET /orders/:idCommande/facture.pdf returns a buyer invoice for profession
 	const fakeDb = {
 		query: async (sql, params) => {
 			if (sql.includes('WHERE c.idCommande = ?')) {
-				assert.deepEqual(params, [33, 22]);
+				assert.deepEqual(params, [22, 33, 22]);
 				return [[{
 					idCommande: 33,
 					numeroCommandeUtilisateur: 4,

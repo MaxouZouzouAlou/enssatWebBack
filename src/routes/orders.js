@@ -53,22 +53,25 @@ function getOwnerWhereClause(owner) {
 	throw new Error('Unsupported order owner.');
 }
 
-function buildOwnerOrderSequenceSelect(ownerFilterClause) {
-	return `(
+function buildOwnerOrderSequenceSelect(ownerFilter) {
+	return {
+		sql: `(
 		SELECT ranked.numeroCommandeUtilisateur
 		FROM (
 			SELECT
 				c2.idCommande,
 				ROW_NUMBER() OVER (
-					PARTITION BY ${ownerFilterClause.includes('idParticulier') ? 'c2.idParticulier' : 'c2.idProfessionnel'}
+					PARTITION BY ${ownerFilter.clause.includes('idParticulier') ? 'c2.idParticulier' : 'c2.idProfessionnel'}
 					ORDER BY c2.dateCommande ASC, c2.idCommande ASC
 				) AS numeroCommandeUtilisateur
 			FROM Commande c2
-			WHERE ${ownerFilterClause.replaceAll('c.', 'c2.')}
+			WHERE ${ownerFilter.clause.replaceAll('c.', 'c2.')}
 		) AS ranked
 		WHERE ranked.idCommande = c.idCommande
 		LIMIT 1
-	)`;
+	)`,
+		params: [...ownerFilter.params]
+	};
 }
 
 function recurringErrorStatus(message = '') {
@@ -250,11 +253,11 @@ export function createOrdersRouter({
 			if (!context) return;
 
 			const ownerFilter = getOwnerWhereClause(context.owner);
-			const ownerOrderSequenceSelect = buildOwnerOrderSequenceSelect(ownerFilter.clause);
+			const ownerOrderSequenceSelect = buildOwnerOrderSequenceSelect(ownerFilter);
 			const [rows] = await db.query(
 				`SELECT
 					c.idCommande,
-					${ownerOrderSequenceSelect} AS numeroCommandeUtilisateur,
+					${ownerOrderSequenceSelect.sql} AS numeroCommandeUtilisateur,
 					c.dateCommande,
 					c.modeLivraison,
 					c.modePaiement,
@@ -267,7 +270,7 @@ export function createOrdersRouter({
 				 WHERE ${ownerFilter.clause}
 				 GROUP BY c.idCommande, c.dateCommande, c.modeLivraison, c.modePaiement, c.prixTotal, c.status
 				 ORDER BY c.dateCommande DESC, c.idCommande DESC`,
-				ownerFilter.params
+				[...ownerOrderSequenceSelect.params, ...ownerFilter.params]
 			);
 
 			return res.json({
@@ -371,11 +374,11 @@ export function createOrdersRouter({
 			}
 
 			const ownerFilter = getOwnerWhereClause(context.owner);
-			const ownerOrderSequenceSelect = buildOwnerOrderSequenceSelect(ownerFilter.clause);
+			const ownerOrderSequenceSelect = buildOwnerOrderSequenceSelect(ownerFilter);
 			const [orderRows] = await db.query(
 				`SELECT
 					c.idCommande,
-					${ownerOrderSequenceSelect} AS numeroCommandeUtilisateur,
+					${ownerOrderSequenceSelect.sql} AS numeroCommandeUtilisateur,
 					c.dateCommande,
 					c.modeLivraison,
 					c.modePaiement,
@@ -385,7 +388,7 @@ export function createOrdersRouter({
 				 WHERE c.idCommande = ?
 				   AND ${ownerFilter.clause}
 				 LIMIT 1`,
-				[idCommande, ...ownerFilter.params]
+				[...ownerOrderSequenceSelect.params, idCommande, ...ownerFilter.params]
 			);
 
 			if (!orderRows.length) {
@@ -531,11 +534,11 @@ export function createOrdersRouter({
 			}
 
 			const ownerFilter = getOwnerWhereClause(context.owner);
-			const ownerOrderSequenceSelect = buildOwnerOrderSequenceSelect(ownerFilter.clause);
+			const ownerOrderSequenceSelect = buildOwnerOrderSequenceSelect(ownerFilter);
 			const [orderRows] = await db.query(
 				`SELECT
 					c.idCommande,
-					${ownerOrderSequenceSelect} AS numeroCommandeUtilisateur,
+					${ownerOrderSequenceSelect.sql} AS numeroCommandeUtilisateur,
 					c.dateCommande,
 					c.modeLivraison,
 					c.modePaiement,
@@ -545,7 +548,7 @@ export function createOrdersRouter({
 				 WHERE c.idCommande = ?
 				   AND ${ownerFilter.clause}
 				 LIMIT 1`,
-				[idCommande, ...ownerFilter.params]
+				[...ownerOrderSequenceSelect.params, idCommande, ...ownerFilter.params]
 			);
 
 			if (!orderRows.length) {
