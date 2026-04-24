@@ -4,8 +4,7 @@ import { auth } from '../auth.js';
 import pool from '../server_config/db.js';
 import { getBusinessProfileByAuthUserId } from '../services/auth-profile-service.js';
 import { createLoyaltyNotification, createVoucherNotification } from '../services/notifications-service.js';
-
-const router = express.Router();
+import { evaluateChallengeConditions } from '../services/loyalty-challenges-service.js';
 
 const VOUCHER_OPTIONS = Object.freeze([
 	{ requiredPoints: 1000, rewardEuro: 5 },
@@ -46,35 +45,44 @@ function buildVoucherCode() {
   return `BON-${Math.random().toString(36).slice(2, 8).toUpperCase()}-${Date.now().toString(36).toUpperCase()}`;
 }
 
-async function requireParticulier(req, res, next) {
-  try {
-    const session = await auth.api.getSession({
-      headers: fromNodeHeaders(req.headers),
-    });
+export function createLoyaltyRouter({
+	authClient = auth,
+	db = pool,
+	getProfileByAuthUserId = getBusinessProfileByAuthUserId,
+	headersFromNode = fromNodeHeaders,
+	createLoyaltyNotificationFn = createLoyaltyNotification,
+	createVoucherNotificationFn = createVoucherNotification,
+} = {}) {
+	const router = express.Router();
 
-    if (!session) {
-      return res.status(401).json({ error: 'Non authentifié.' });
-    }
+	async function requireParticulier(req, res) {
+		const session = await authClient.api.getSession({
+			headers: headersFromNode(req.headers),
+		});
 
-    const profile = await getBusinessProfileByAuthUserId(session.user.id);
+		if (!session) {
+			res.status(401).json({ error: 'Non authentifié.' });
+			return null;
+		}
 
-    if (!profile?.particulier?.id) {
-      return res.status(403).json({ error: 'Compte particulier requis.' });
-    }
+		const profile = await getProfileByAuthUserId(session.user.id);
 
-    req.authSession = session;
-    req.businessProfile = profile;
-    return next();
-  } catch (error) {
-    return next(error);
-  }
-}
+		if (!profile?.particulier?.id) {
+			res.status(403).json({ error: 'Compte particulier requis.' });
+			return null;
+		}
 
-router.get('/me', requireParticulier, async (req, res, next) => {
-  try {
-    const particulierId = req.businessProfile.particulier.id;
+		return { session, profile };
+	}
 
-    const [[particulier]] = await pool.query(
+	router.get('/me', async (req, res, next) => {
+	  try {
+		const authContext = await requireParticulier(req, res);
+		if (!authContext) return;
+
+		const particulierId = authContext.profile.particulier.id;
+
+		const [[particulier]] = await db.query(
       `SELECT idParticulier, pointsFidelite
        FROM Particulier
        WHERE idParticulier = ?
@@ -82,7 +90,7 @@ router.get('/me', requireParticulier, async (req, res, next) => {
       [particulierId]
     );
 
-    const [challenges] = await pool.query(
+		const [challenges] = await db.query(
       `SELECT
           d.idDefi,
           d.code,
@@ -101,7 +109,7 @@ router.get('/me', requireParticulier, async (req, res, next) => {
       [particulierId]
     );
 
-    const [vouchers] = await pool.query(
+		const [vouchers] = await db.query(
       `SELECT idBon, codeBon, valeurEuros, pointsUtilises, statut, dateCreation, dateUtilisation, dateExpiration
        FROM BonAchat
        WHERE idParticulier = ?
@@ -109,45 +117,64 @@ router.get('/me', requireParticulier, async (req, res, next) => {
       [particulierId]
     );
 
-    const points = Number(particulier?.pointsFidelite || 0);
+		const points = Number(particulier?.pointsFidelite || 0);
+		const serializedChallenges = await Promise.all(
+			challenges.map(async (challengeRow) => {
+				const claimsCount = Number(challengeRow.claimsCount || 0);
+				const eligibility = await evaluateChallengeConditions(db, {
+					code: challengeRow.code,
+					particulierId,
+					claimsCount,
+				});
 
-    return res.json({
-      particulierId,
-      pointsFidelite: points,
-      prochainPalier: computeNextVoucherTier(points),
-      voucherOptions: buildVoucherOptions(points),
-      challenges: challenges.map((c) => ({
-        ...c,
-        pointsRecompense: Number(c.pointsRecompense || 0),
-        maxClaims: Number(c.maxClaims || 0),
-        claimsCount: Number(c.claimsCount || 0),
-        canClaim: Boolean(c.canClaim),
-      })),
-      vouchers: vouchers.map((v) => ({
-        ...v,
-        valeurEuros: Number(v.valeurEuros || 0),
-        pointsUtilises: Number(v.pointsUtilises || 0),
-      })),
-    });
-  } catch (error) {
-    return next(error);
-  }
-});
+				return {
+					...challengeRow,
+					pointsRecompense: Number(challengeRow.pointsRecompense || 0),
+					maxClaims: Number(challengeRow.maxClaims || 0),
+					claimsCount,
+					canClaim: Boolean(challengeRow.canClaim),
+					conditionsRemplies: eligibility.conditionsRemplies,
+					progressValue: eligibility.progressValue,
+					requiredValue: eligibility.requiredValue,
+				};
+			})
+		);
 
-router.post('/challenges/:code/claim', requireParticulier, async (req, res, next) => {
-  const conn = await pool.getConnection();
+		return res.json({
+		  particulierId,
+		  pointsFidelite: points,
+		  prochainPalier: computeNextVoucherTier(points),
+		  voucherOptions: buildVoucherOptions(points),
+		  challenges: serializedChallenges,
+		  vouchers: vouchers.map((v) => ({
+			...v,
+			valeurEuros: Number(v.valeurEuros || 0),
+			pointsUtilises: Number(v.pointsUtilises || 0),
+		  })),
+		});
+	  } catch (error) {
+		return next(error);
+	  }
+	});
 
-  try {
-    const particulierId = req.businessProfile.particulier.id;
-    const code = String(req.params.code || '').trim().toUpperCase();
+	router.post('/challenges/:code/claim', async (req, res, next) => {
+	  const authContext = await requireParticulier(req, res).catch(next);
+	  if (!authContext) return;
+	  const conn = await db.getConnection();
+	  let transactionStarted = false;
 
-    if (!code) {
-      return res.status(400).json({ error: 'Code de défi invalide.' });
-    }
+	  try {
+		const particulierId = authContext.profile.particulier.id;
+		const code = String(req.params.code || '').trim().toUpperCase();
 
-    await conn.beginTransaction();
+		if (!code) {
+		  return res.status(400).json({ error: 'Code de défi invalide.' });
+		}
 
-    const [challengeRows] = await conn.query(
+		await conn.beginTransaction();
+		transactionStarted = true;
+
+		const [challengeRows] = await conn.query(
       `SELECT idDefi, titre, pointsRecompense, maxClaims
        FROM FideliteDefi
        WHERE code = ? AND actif = TRUE
@@ -156,14 +183,14 @@ router.post('/challenges/:code/claim', requireParticulier, async (req, res, next
       [code]
     );
 
-    if (!challengeRows.length) {
-      await conn.rollback();
-      return res.status(404).json({ error: 'Défi introuvable.' });
-    }
+		if (!challengeRows.length) {
+		  await conn.rollback();
+		  return res.status(404).json({ error: 'Défi introuvable.' });
+		}
 
-    const challenge = challengeRows[0];
+		const challenge = challengeRows[0];
 
-    const [progressRows] = await conn.query(
+		const [progressRows] = await conn.query(
       `SELECT idProgress, claimsCount
        FROM FideliteDefiProgress
        WHERE idParticulier = ? AND idDefi = ?
@@ -172,16 +199,27 @@ router.post('/challenges/:code/claim', requireParticulier, async (req, res, next
       [particulierId, challenge.idDefi]
     );
 
-    const currentClaims = Number(progressRows[0]?.claimsCount || 0);
-    const maxClaims = Number(challenge.maxClaims || 0);
+		const currentClaims = Number(progressRows[0]?.claimsCount || 0);
+		const maxClaims = Number(challenge.maxClaims || 0);
 
-    if (currentClaims >= maxClaims) {
-      await conn.rollback();
-      return res.status(409).json({ error: 'Défi déjà complété le nombre maximum de fois.' });
-    }
+		if (currentClaims >= maxClaims) {
+		  await conn.rollback();
+		  return res.status(409).json({ error: 'Défi déjà complété le nombre maximum de fois.' });
+		}
 
-    if (progressRows.length) {
-      await conn.execute(
+		const eligibility = await evaluateChallengeConditions(conn, {
+			code,
+			particulierId,
+			claimsCount: currentClaims,
+		});
+
+		if (!eligibility.conditionsRemplies) {
+			await conn.rollback();
+			return res.status(409).json({ error: 'Les conditions du défi ne sont pas remplies.' });
+		}
+
+		if (progressRows.length) {
+		  await conn.execute(
         `UPDATE FideliteDefiProgress
          SET claimsCount = claimsCount + 1,
              dateDernierClaim = NOW(),
@@ -189,88 +227,92 @@ router.post('/challenges/:code/claim', requireParticulier, async (req, res, next
          WHERE idProgress = ?`,
         [progressRows[0].idProgress]
       );
-    } else {
-      await conn.execute(
+		} else {
+		  await conn.execute(
         `INSERT INTO FideliteDefiProgress
          (idParticulier, idDefi, claimsCount, dateDernierClaim, createdAt, updatedAt)
          VALUES (?, ?, 1, NOW(), NOW(), NOW())`,
         [particulierId, challenge.idDefi]
       );
-    }
+		}
 
-    await conn.execute(
+		await conn.execute(
       'UPDATE Particulier SET pointsFidelite = pointsFidelite + ? WHERE idParticulier = ?',
       [Number(challenge.pointsRecompense || 0), particulierId]
     );
 
-    const [[particulier]] = await conn.query(
+		const [[particulier]] = await conn.query(
       'SELECT pointsFidelite FROM Particulier WHERE idParticulier = ? LIMIT 1',
       [particulierId]
     );
-    const updatedBalance = Number(particulier?.pointsFidelite || 0);
+		const updatedBalance = Number(particulier?.pointsFidelite || 0);
 
-    await conn.commit();
+		await conn.commit();
 
-    void createLoyaltyNotification(req.authSession.user.id, Number(challenge.pointsRecompense || 0)).catch(() => {});
+		void createLoyaltyNotificationFn(authContext.session.user.id, Number(challenge.pointsRecompense || 0)).catch(() => {});
 
-    return res.status(201).json({
-      challenge: {
-        code,
-        titre: challenge.titre,
-        pointsRecompense: Number(challenge.pointsRecompense || 0),
-      },
-      pointsFidelite: updatedBalance,
-    });
-  } catch (error) {
-    await conn.rollback();
-    return next(error);
-  } finally {
-    conn.release();
-  }
-});
+		return res.status(201).json({
+		  challenge: {
+			code,
+			titre: challenge.titre,
+			pointsRecompense: Number(challenge.pointsRecompense || 0),
+		  },
+		  pointsFidelite: updatedBalance,
+		});
+	  } catch (error) {
+		if (transactionStarted) await conn.rollback();
+		return next(error);
+	  } finally {
+		conn.release();
+	  }
+	});
 
-router.post('/redeem-voucher', requireParticulier, async (req, res, next) => {
-  const conn = await pool.getConnection();
+	router.post('/redeem-voucher', async (req, res, next) => {
+	  const authContext = await requireParticulier(req, res).catch(next);
+	  if (!authContext) return;
+	  const conn = await db.getConnection();
+	  let transactionStarted = false;
 
-  try {
-    const particulierId = req.businessProfile.particulier.id;
-    const pointsToSpend = Number(req.body?.pointsToSpend || VOUCHER_OPTIONS[0].requiredPoints);
-    const selectedOption = getVoucherOptionByPoints(pointsToSpend);
+	  try {
+		const particulierId = authContext.profile.particulier.id;
+		const pointsToSpend = Number(req.body?.pointsToSpend || VOUCHER_OPTIONS[0].requiredPoints);
+		const selectedOption = getVoucherOptionByPoints(pointsToSpend);
 
-    if (!Number.isInteger(pointsToSpend) || pointsToSpend <= 0 || !selectedOption) {
-      return res.status(400).json({ error: 'pointsToSpend doit correspondre a un palier valide.' });
-    }
+		if (!Number.isInteger(pointsToSpend) || pointsToSpend <= 0 || !selectedOption) {
+		  return res.status(400).json({ error: 'pointsToSpend doit correspondre a un palier valide.' });
+		}
 
-    const voucherValue = selectedOption.rewardEuro;
+		const voucherValue = selectedOption.rewardEuro;
 
-    await conn.beginTransaction();
+		await conn.beginTransaction();
+		transactionStarted = true;
 
-    const [particulierRows] = await conn.query(
+		const [particulierRows] = await conn.query(
       'SELECT pointsFidelite FROM Particulier WHERE idParticulier = ? LIMIT 1 FOR UPDATE',
       [particulierId]
     );
 
-    const currentPoints = Number(particulierRows[0]?.pointsFidelite || 0);
+		const currentPoints = Number(particulierRows[0]?.pointsFidelite || 0);
 
-    if (currentPoints < pointsToSpend) {
-      await conn.rollback();
-      return res.status(409).json({ error: 'Points insuffisants pour créer ce bon.' });
-    }
+		if (currentPoints < pointsToSpend) {
+		  await conn.rollback();
+		  return res.status(409).json({ error: 'Points insuffisants pour créer ce bon.' });
+		}
 
-    await conn.execute(
+		await conn.execute(
       'UPDATE Particulier SET pointsFidelite = pointsFidelite - ? WHERE idParticulier = ?',
       [pointsToSpend, particulierId]
     );
 
-    const codeBon = buildVoucherCode();
-    const [insertResult] = await conn.execute(
+		const codeBon = buildVoucherCode();
+		const [insertResult] = await conn.execute(
       `INSERT INTO BonAchat
        (idParticulier, codeBon, valeurEuros, pointsUtilises, statut, dateCreation, dateExpiration)
        VALUES (?, ?, ?, ?, 'actif', NOW(), DATE_ADD(NOW(), INTERVAL 90 DAY))`,
       [particulierId, codeBon, voucherValue, pointsToSpend]
     );
 
-    const [voucherRows] = await conn.query(
+		const [voucherRows] = await conn.query(
       `SELECT idBon, codeBon, valeurEuros, pointsUtilises, statut, dateCreation, dateExpiration
        FROM BonAchat
        WHERE idBon = ?
@@ -278,26 +320,29 @@ router.post('/redeem-voucher', requireParticulier, async (req, res, next) => {
       [insertResult.insertId]
     );
 
-    const [updatedRows] = await conn.query(
+		const [updatedRows] = await conn.query(
       'SELECT pointsFidelite FROM Particulier WHERE idParticulier = ? LIMIT 1',
       [particulierId]
     );
-    const updatedBalance = Number(updatedRows[0]?.pointsFidelite || 0);
+		const updatedBalance = Number(updatedRows[0]?.pointsFidelite || 0);
 
-    await conn.commit();
+		await conn.commit();
 
-    void createVoucherNotification(req.authSession.user.id, voucherValue, codeBon).catch(() => {});
+		void createVoucherNotificationFn(authContext.session.user.id, voucherValue, codeBon).catch(() => {});
 
-    return res.status(201).json({
-      voucher: voucherRows[0],
-      pointsFidelite: updatedBalance,
-    });
-  } catch (error) {
-    await conn.rollback();
-    return next(error);
-  } finally {
-    conn.release();
-  }
-});
+		return res.status(201).json({
+		  voucher: voucherRows[0],
+		  pointsFidelite: updatedBalance,
+		});
+	  } catch (error) {
+		if (transactionStarted) await conn.rollback();
+		return next(error);
+	  } finally {
+		conn.release();
+	  }
+	});
 
-export default router;
+	return router;
+}
+
+export default createLoyaltyRouter();

@@ -11,9 +11,44 @@ import { geocodeAddress } from '../services/geocoding-service.js';
 
 const CATALOG_SORTS = new Set(['alpha_asc', 'alpha_desc', 'stock_desc', 'rating_desc', 'proximity']);
 const geocodedAddressCache = new Map();
+export const PRODUCT_IMAGE_MAX_SIZE_BYTES = 5 * 1024 * 1024;
+export const ALLOWED_PRODUCT_IMAGE_MIME_TYPES = new Set([
+	'image/jpeg',
+	'image/png',
+	'image/webp'
+]);
+export const ALLOWED_PRODUCT_IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp']);
+
+export class ProductUploadError extends Error {
+	constructor(message, status = 400) {
+		super(message);
+		this.name = 'ProductUploadError';
+		this.status = status;
+	}
+}
 
 function normalizeText(value) {
 	return String(value || '').trim();
+}
+
+export function createSafeUploadFilename(originalname, now = Date.now()) {
+	const parsedPath = path.parse(String(originalname || ''));
+	const extension = parsedPath.ext.toLowerCase();
+	const safeExtension = ALLOWED_PRODUCT_IMAGE_EXTENSIONS.has(extension) ? extension : '';
+	const baseName = parsedPath.name;
+	const safeBaseName = baseName.replace(/[^a-zA-Z0-9._-]/g, '_') || 'image';
+	return `${now}-${safeBaseName}${safeExtension}`;
+}
+
+export function isAllowedProductImageFile(file) {
+	const mimeType = String(file?.mimetype || '').toLowerCase();
+	const extension = path.extname(String(file?.originalname || '')).toLowerCase();
+	return ALLOWED_PRODUCT_IMAGE_MIME_TYPES.has(mimeType) && ALLOWED_PRODUCT_IMAGE_EXTENSIONS.has(extension);
+}
+
+async function cleanupUploadedFile(file) {
+	if (!file?.path) return;
+	await fs.unlink(file.path).catch(() => {});
 }
 
 function parsePositiveInteger(value, fallback, max = 100) {
@@ -482,11 +517,37 @@ const storage = multer.diskStorage({
 		cb(null, uploadDir);
 	},
 	filename: function (req, file, cb) {
-		const safe = `${Date.now()}-${file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+		const safe = createSafeUploadFilename(file.originalname);
 		cb(null, safe);
 	}
 });
-const upload = multer({ storage });
+const upload = multer({
+	storage,
+	limits: {
+		fileSize: PRODUCT_IMAGE_MAX_SIZE_BYTES
+	},
+	fileFilter: (req, file, cb) => {
+		if (isAllowedProductImageFile(file)) {
+			return cb(null, true);
+		}
+		return cb(new ProductUploadError('Format image invalide. Utilisez JPG, PNG ou WEBP.'));
+	}
+});
+
+function singleProductImageUpload(req, res, next) {
+	return upload.single('image')(req, res, (err) => {
+		if (!err) return next();
+		if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
+			return res.status(413).json({
+				error: `Image trop volumineuse. Taille maximale: ${Math.floor(PRODUCT_IMAGE_MAX_SIZE_BYTES / (1024 * 1024))} Mo.`
+			});
+		}
+		if (err instanceof ProductUploadError) {
+			return res.status(err.status).json({ error: err.message });
+		}
+		return next(err);
+	});
+}
 
 async function requireProfessionalSession(req, res, next) {
 	try {
@@ -509,13 +570,15 @@ async function requireProfessionalSession(req, res, next) {
 /**
  * Create product for professional (accepts multipart/form-data with `image` or JSON body)
  */
-router.post('/professionnel/:idProfessionnel', requireProfessionalSession, upload.single('image'), async (req, res, next) => {
+router.post('/professionnel/:idProfessionnel', requireProfessionalSession, singleProductImageUpload, async (req, res, next) => {
 	const idProfessionnel = Number(req.params.idProfessionnel);
 	if (!Number.isInteger(idProfessionnel) || idProfessionnel <= 0) {
+		await cleanupUploadedFile(req.file);
 		return res.status(400).json({ error: 'Identifiant professionnel invalide.' });
 	}
 
 	if (req.businessProfile.professionnel.id !== idProfessionnel) {
+		await cleanupUploadedFile(req.file);
 		return res.status(403).json({ error: 'Acces interdit pour ce professionnel.' });
 	}
 
@@ -533,19 +596,23 @@ router.post('/professionnel/:idProfessionnel', requireProfessionalSession, uploa
 	const requestedCompanyId = parseCompanyId(body.idEntreprise ?? req.query?.idEntreprise ?? req.businessProfile?.professionnel?.entreprise?.id);
 
 	if (Number.isNaN(requestedCompanyId)) {
+		await cleanupUploadedFile(req.file);
 		return res.status(400).json({ error: 'Identifiant entreprise invalide.' });
 	}
 
 	if (!nom || prix == null || isNaN(prix)) {
+		await cleanupUploadedFile(req.file);
 		return res.status(400).json({ error: 'Nom et prix du produit requis.' });
 	}
 
 	const conn = await pool.getConnection();
+	let shouldCleanupUploadedFile = Boolean(req.file);
 	try {
 		await conn.beginTransaction();
 		const companyId = await findAuthorizedCompanyId(conn, idProfessionnel, requestedCompanyId);
 		if (!companyId) {
 			await conn.rollback();
+			await cleanupUploadedFile(req.file);
 			return res.status(403).json({ error: 'Entreprise non autorisee pour ce professionnel.' });
 		}
 
@@ -565,33 +632,40 @@ router.post('/professionnel/:idProfessionnel', requireProfessionalSession, uploa
 
 		if (idImage) {
 			await conn.execute('INSERT INTO Produit_Image (idProduit, idImage) VALUES (?, ?)', [prodRes.insertId, idImage]);
+			}
+
+			await conn.commit();
+			shouldCleanupUploadedFile = false;
+
+			const created = await fetchProductById(db, prodRes.insertId);
+			res.status(201).json(created);
+		} catch (err) {
+			await conn.rollback();
+			if (shouldCleanupUploadedFile) {
+				await cleanupUploadedFile(req.file);
+			}
+			return next(err);
+		} finally {
+			conn.release();
 		}
-
-		await conn.commit();
-
-		const created = await fetchProductById(db, prodRes.insertId);
-		res.status(201).json(created);
-	} catch (err) {
-		await conn.rollback();
-		return next(err);
-	} finally {
-		conn.release();
-	}
-});
+	});
 
 // Update product
-router.put('/professionnel/:idProfessionnel/:idProduit', requireProfessionalSession, upload.single('image'), async (req, res, next) => {
+router.put('/professionnel/:idProfessionnel/:idProduit', requireProfessionalSession, singleProductImageUpload, async (req, res, next) => {
 	const idProfessionnel = Number(req.params.idProfessionnel);
 	const idProduit = Number(req.params.idProduit);
 	if (!Number.isInteger(idProfessionnel) || idProfessionnel <= 0 || !Number.isInteger(idProduit) || idProduit <= 0) {
+		await cleanupUploadedFile(req.file);
 		return res.status(400).json({ error: 'Identifiants invalides.' });
 	}
 
 	if (req.businessProfile.professionnel.id !== idProfessionnel) {
+		await cleanupUploadedFile(req.file);
 		return res.status(403).json({ error: 'Acces interdit pour ce professionnel.' });
 	}
 	const requestedCompanyId = parseCompanyId(req.body?.idEntreprise ?? req.query?.idEntreprise);
 	if (Number.isNaN(requestedCompanyId)) {
+		await cleanupUploadedFile(req.file);
 		return res.status(400).json({ error: 'Identifiant entreprise invalide.' });
 	}
 
@@ -610,21 +684,25 @@ router.put('/professionnel/:idProfessionnel/:idProduit', requireProfessionalSess
 	};
 
 	const conn = await pool.getConnection();
+	let shouldCleanupUploadedFile = Boolean(req.file);
 	try {
 		await conn.beginTransaction();
 
 		const [existingRows] = await conn.execute('SELECT * FROM Produit WHERE idProduit = ? FOR UPDATE', [idProduit]);
 		if (!existingRows.length) {
 			await conn.rollback();
+			await cleanupUploadedFile(req.file);
 			return res.status(404).json({ error: 'Produit introuvable.' });
 		}
 		const existing = existingRows[0];
 		if (existing.idProfessionnel !== idProfessionnel) {
 			await conn.rollback();
+			await cleanupUploadedFile(req.file);
 			return res.status(403).json({ error: 'Acces interdit pour ce produit.' });
 		}
 		if (requestedCompanyId != null && existing.idEntreprise !== requestedCompanyId) {
 			await conn.rollback();
+			await cleanupUploadedFile(req.file);
 			return res.status(403).json({ error: 'Ce produit n appartient pas a l entreprise selectionnee.' });
 		}
 
@@ -679,19 +757,23 @@ router.put('/professionnel/:idProfessionnel/:idProduit', requireProfessionalSess
 					);
 				} catch (e) { /* ignore */ }
 			}
+			}
+
+			await conn.commit();
+			shouldCleanupUploadedFile = false;
+
+			const updated = await fetchProductById(db, idProduit);
+			return res.json(updated);
+		} catch (err) {
+			await conn.rollback();
+			if (shouldCleanupUploadedFile) {
+				await cleanupUploadedFile(req.file);
+			}
+			return next(err);
+		} finally {
+			conn.release();
 		}
-
-		await conn.commit();
-
-		const updated = await fetchProductById(db, idProduit);
-		return res.json(updated);
-	} catch (err) {
-		await conn.rollback();
-		return next(err);
-	} finally {
-		conn.release();
-	}
-});
+	});
 
 // Delete product
 router.delete('/professionnel/:idProfessionnel/:idProduit', requireProfessionalSession, async (req, res, next) => {

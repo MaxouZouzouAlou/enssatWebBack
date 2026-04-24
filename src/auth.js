@@ -8,6 +8,7 @@ import {
 import { sendAccountVerificationEmail, sendEmailChangeVerificationEmail, sendPasswordResetEmail } from './services/email-service.js';
 import { createWelcomeNotification } from './services/notifications-service.js';
 import pool from './server_config/db.js';
+import { getEnvValue, getRequiredEnv, isTestEnv } from './server_config/env.js';
 
 const frontendOrigin = process.env.FRONTEND_ORIGIN || 'http://localhost:3000';
 const backendPort = process.env.PORT_OPEN || '49161';
@@ -20,11 +21,9 @@ const normalizedBackend = normalizeOrigin(backendOrigin);
 const googleClientId = process.env.GOOGLE_CLIENT_ID;
 const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET;
 export const googleAuthEnabled = Boolean(googleClientId && googleClientSecret);
-const betterAuthSecret = process.env.BETTER_AUTH_SECRET || 'localzh-dev-better-auth-secret-change-me';
-
-if (!process.env.BETTER_AUTH_SECRET) {
-	console.warn('BETTER_AUTH_SECRET is not set. Using development fallback secret.');
-}
+const betterAuthSecret = isTestEnv
+	? getEnvValue('BETTER_AUTH_SECRET', { fallback: 'localzh-test-better-auth-secret' })
+	: getRequiredEnv('BETTER_AUTH_SECRET');
 
 if ((googleClientId && !googleClientSecret) || (!googleClientId && googleClientSecret)) {
 	console.warn('Google OAuth is partially configured. Set both GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET.');

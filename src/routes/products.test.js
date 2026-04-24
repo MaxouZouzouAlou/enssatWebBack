@@ -1,6 +1,12 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import productsRouter from './products.js';
+import productsRouter, {
+	ALLOWED_PRODUCT_IMAGE_EXTENSIONS,
+	ALLOWED_PRODUCT_IMAGE_MIME_TYPES,
+	PRODUCT_IMAGE_MAX_SIZE_BYTES,
+	createSafeUploadFilename,
+	isAllowedProductImageFile
+} from './products.js';
 
 async function invokeRouter(router, req) {
 	return await new Promise((resolve, reject) => {
@@ -316,6 +322,45 @@ test('GET /products/professionnel/:idProfessionnel resolves the professional rou
 	assert.deepEqual(res.body, [{ idProduit: 7, idProfessionnel: 12, nom: 'Tomates' }]);
 	assert.equal(calls.length, 1);
 	assert.deepEqual(calls[0].params, [12]);
+});
+
+test('product uploads only allow intended image mime types and extensions', () => {
+	assert.equal(isAllowedProductImageFile({
+		originalname: 'photo-produit.JPG',
+		mimetype: 'image/jpeg'
+	}), true);
+	assert.equal(isAllowedProductImageFile({
+		originalname: 'photo-produit.png',
+		mimetype: 'image/png'
+	}), true);
+	assert.equal(isAllowedProductImageFile({
+		originalname: 'photo-produit.webp',
+		mimetype: 'image/webp'
+	}), true);
+
+	assert.equal(isAllowedProductImageFile({
+		originalname: 'script.js',
+		mimetype: 'application/javascript'
+	}), false);
+	assert.equal(isAllowedProductImageFile({
+		originalname: 'photo-produit.png',
+		mimetype: 'application/pdf'
+	}), false);
+	assert.equal(isAllowedProductImageFile({
+		originalname: 'photo-produit.svg',
+		mimetype: 'image/svg+xml'
+	}), false);
+});
+
+test('product upload filename sanitization preserves only a safe basename and allowed extension', () => {
+	const fileName = createSafeUploadFilename('../../../photo produit été!.PNG', 1712345678901);
+	assert.equal(fileName, '1712345678901-photo_produit__t__.png');
+});
+
+test('product upload policy exports the expected size and format constraints', () => {
+	assert.equal(PRODUCT_IMAGE_MAX_SIZE_BYTES, 5 * 1024 * 1024);
+	assert.deepEqual([...ALLOWED_PRODUCT_IMAGE_MIME_TYPES].sort(), ['image/jpeg', 'image/png', 'image/webp']);
+	assert.deepEqual([...ALLOWED_PRODUCT_IMAGE_EXTENSIONS].sort(), ['.jpeg', '.jpg', '.png', '.webp']);
 });
 
 test('GET /products/professionnel/:idProfessionnel can scope the catalog to one company', async () => {

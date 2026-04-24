@@ -79,7 +79,7 @@ If the command fails with `Access denied`, the local MySQL `root` password is
 not `sqlpassword`. Either use the correct password in the commands below, or
 update the MySQL root password locally before continuing.
 
-5. Copy `.env.example` to `.env` and edit DB credentials if needed.
+5. Create `.env` and configure the required database credentials.
 
 Recommended project database values:
 
@@ -107,7 +107,10 @@ mysql -u root -psqlpassword -e "DROP DATABASE IF EXISTS localzh;"
 mysql -u root -psqlpassword < init.sql
 ```
 
-7. Configure auth environment variables:
+These variables are required at runtime outside tests. The backend now fails
+fast at startup when one of them is missing.
+
+6. Configure auth environment variables:
 
 ```bash
 PORT_OPEN=49161
@@ -145,7 +148,20 @@ local development. With SMTP configured, the link is sent to the account email.
 The `Utilisateur` address fields are not part of registration. Professional
 registration stores company address fields on `Entreprise`.
 
-8. Install dependencies and start server:
+Minimum required `.env` example:
+
+```bash
+DB_HOST=localhost
+DB_USER=root
+DB_PASSWORD=sqlpassword
+DB_NAME=localzh
+PORT_OPEN=49161
+FRONTEND_ORIGIN=http://localhost:3000
+BETTER_AUTH_URL=http://localhost:49161
+BETTER_AUTH_SECRET=<openssl rand -base64 32>
+```
+
+7. Install dependencies and start server:
 
 ```bash
 npm install

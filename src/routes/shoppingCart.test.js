@@ -88,7 +88,7 @@ test('GET /:id returns 401 without a session', async () => {
     const response = await dispatch(router, { url: '/1' });
 
     assert.equal(response.statusCode, 401);
-    assert.equal(response.body.error, 'Non authentifie.');
+    assert.equal(response.body.error, 'Non authentifié.');
 });
 
 test('GET /:id/items returns 403 for another user cart', async () => {
