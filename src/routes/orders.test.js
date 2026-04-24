@@ -138,13 +138,50 @@ function createDb(connection) {
 	};
 }
 
-function createRouter({ authClient, db, profile = particulierProfile(), geocodeAddressFn = async () => ({ latitude: 48.7319, longitude: -3.4579 }) }) {
+function createRouter({
+	authClient,
+	db,
+	profile = particulierProfile(),
+	geocodeAddressFn = async () => ({ latitude: 48.7319, longitude: -3.4579 }),
+	createOrderNotificationFn = async () => {},
+	sendOrderConfirmationEmailFn = async () => {}
+}) {
 	return createOrdersRouter({
 		authClient,
 		db,
 		getProfileByAuthUserId: async () => profile,
 		headersFromNode: (headers) => headers,
-		geocodeAddressFn
+		geocodeAddressFn,
+		createOrderNotificationFn,
+		sendOrderConfirmationEmailFn
+	});
+}
+
+function createCheckoutRouter({
+	authClient,
+	db,
+	profile = particulierProfile(),
+	checkoutCartFn = async () => ({
+		order: {
+			idCommande: 42,
+			numeroCommandeUtilisateur: 7
+		},
+		items: [],
+		delivery: null,
+		loyalty: null,
+		appliedVoucher: null
+	}),
+	createOrderNotificationFn = async () => {},
+	sendOrderConfirmationEmailFn = async () => {}
+}) {
+	return createOrdersRouter({
+		authClient,
+		db,
+		getProfileByAuthUserId: async () => profile,
+		headersFromNode: (headers) => headers,
+		checkoutCartFn,
+		createOrderNotificationFn,
+		sendOrderConfirmationEmailFn
 	});
 }
 
@@ -249,11 +286,11 @@ test('GET /checkout/context returns guided checkout data', async () => {
 	assert.equal(response.body.relayOptions.length, 1);
 	assert.equal(response.body.items.length, 1);
 	assert.equal(response.body.pickup.defaultAssignments.length, 1);
-	assert.equal(response.body.pickup.optimizedStopsCount, 1);
-	assert.equal(response.body.pickup.optimizedRoute.stops.length, 1);
+	assert.equal(response.body.pickup.optimizedStopsCount, 0);
+	assert.equal(response.body.pickup.optimizedRoute, null);
 });
 
-test('GET /checkout/context optimizes default pickup assignments from the personal address', async () => {
+test('GET /checkout/context returns immediate fallback pickup assignments without geocoding', async () => {
 	const fakeDb = {
 		async getConnection() {
 			return {
@@ -346,7 +383,9 @@ test('GET /checkout/context optimizes default pickup assignments from the person
 	const router = createRouter({
 		authClient: createAuthClient({ user: { id: 'auth-user-1' } }),
 		db: fakeDb,
-		geocodeAddressFn: async () => ({ latitude: 48.7312, longitude: -3.4588 })
+		geocodeAddressFn: async () => {
+			throw new Error('geocoder should not run for checkout context');
+		}
 	});
 
 	const response = await dispatch(router, {
@@ -359,9 +398,9 @@ test('GET /checkout/context optimizes default pickup assignments from the person
 		{ idProduit: 6, idLieu: 3 },
 		{ idProduit: 7, idLieu: 5 }
 	]);
-	assert.equal(response.body.pickup.optimizedRoute.stops.length, 2);
-	assert.equal(response.body.pickup.optimizedRoute.stops[0].idLieu, 3);
-	assert.equal(response.body.pickup.optimizedRoute.stops[1].idLieu, 5);
+	assert.equal(response.body.pickup.optimizedRoute, null);
+	assert.equal(response.body.pickup.optimizedStopsCount, 0);
+	assert.equal(response.body.pickup.originGeocoded, false);
 });
 
 test('POST /checkout/preview accepts a custom home delivery address', async () => {
@@ -836,6 +875,53 @@ test('POST /checkout creates an order with relay delivery and payment mode', asy
 	assert.equal(response.body.order.fraisLivraison, 3.9);
 	assert.equal(calls.commit, 1);
 	assert.equal(calls.rollback, 0);
+});
+
+test('POST /checkout waits for the order notification before returning', async () => {
+	const events = [];
+	const router = createCheckoutRouter({
+		authClient: createAuthClient({ user: { id: 'auth-user-1', email: 'ada@example.test', name: 'Ada' } }),
+		db: {
+			async getConnection() {
+				throw new Error('database should not be called directly');
+			}
+		},
+		checkoutCartFn: async () => {
+			events.push('checkout');
+			return {
+				order: {
+					idCommande: 42,
+					numeroCommandeUtilisateur: 7
+				},
+				items: [],
+				delivery: null,
+				loyalty: null,
+				appliedVoucher: null
+			};
+		},
+		createOrderNotificationFn: async () => {
+			events.push('notification-start');
+			await new Promise((resolve) => setTimeout(resolve, 10));
+			events.push('notification-done');
+		},
+		sendOrderConfirmationEmailFn: async () => {
+			events.push('email-start');
+		}
+	});
+
+	const response = await dispatch(router, {
+		method: 'POST',
+		url: '/checkout',
+		body: {
+			modeLivraison: 'point_relais',
+			modePaiement: 'carte_bancaire',
+			relayId: 2
+		}
+	});
+
+	assert.equal(response.statusCode, 201);
+	assert.deepEqual(events.slice(0, 3), ['checkout', 'notification-start', 'notification-done']);
+	assert.equal(events.includes('email-start'), true);
 });
 
 test('GET /orders/:idCommande/facture.pdf returns a buyer invoice for professional accounts', async () => {

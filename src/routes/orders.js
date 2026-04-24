@@ -106,7 +106,9 @@ export function createOrdersRouter({
 	getProfileByAuthUserId = getBusinessProfileByAuthUserId,
 	headersFromNode = fromNodeHeaders,
 	checkoutCartFn = checkoutCart,
-	geocodeAddressFn = geocodeAddress
+	geocodeAddressFn = geocodeAddress,
+	createOrderNotificationFn = createOrderNotification,
+	sendOrderConfirmationEmailFn = sendOrderConfirmationEmail
 } = {}) {
 	const router = express.Router();
 
@@ -180,12 +182,12 @@ export function createOrdersRouter({
 				geocodeAddressFn
 			});
 
-			void createOrderNotification(
+			await createOrderNotificationFn(
 				context.session.user.id,
 				result.order.idCommande,
 				result.order.numeroCommandeUtilisateur
-			).catch(() => {});
-			void sendOrderConfirmationEmail({
+			);
+			void sendOrderConfirmationEmailFn({
 				user: { email: context.session.user.email, name: context.session.user.name || '' },
 				order: result.order,
 				items: result.items,

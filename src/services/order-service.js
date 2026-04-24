@@ -587,8 +587,7 @@ function buildDeliverySelection({
 export async function getCheckoutContext({
 	db,
 	owner,
-	profile,
-	geocodeAddressFn
+	profile
 }) {
 	const conn = await db.getConnection();
 
@@ -598,17 +597,7 @@ export async function getCheckoutContext({
 		const pickupAvailability = await loadPickupAvailability(conn, cart.idPanier);
 		const itemPickupOptions = buildItemPickupOptions(items, pickupAvailability);
 		const defaultDeliveryAddress = resolveDefaultDeliveryAddress(profile);
-		let originCoordinates = null;
-		if (defaultDeliveryAddress && typeof geocodeAddressFn === 'function') {
-			try {
-				originCoordinates = await geocodeAddressFn(defaultDeliveryAddress);
-			} catch {
-				originCoordinates = null;
-			}
-		}
-		const optimizedPickupPlan = buildOptimizedPickupPlan(itemPickupOptions, originCoordinates);
 		const fallbackAssignments = buildRecommendedPickupAssignments(itemPickupOptions);
-		const defaultPickupAssignments = optimizedPickupPlan?.assignments || fallbackAssignments;
 
 		return {
 			cart: {
@@ -642,13 +631,13 @@ export async function getCheckoutContext({
 			relayOptions,
 			items: itemPickupOptions,
 			pickup: {
-				defaultAssignments: defaultPickupAssignments,
+				defaultAssignments: fallbackAssignments,
 				uniqueSalesPoints: buildUniquePickupPoints(itemPickupOptions),
-				optimizedRoute: optimizedPickupPlan?.pickupRoute || null,
-				optimizedStopsCount: optimizedPickupPlan?.distinctStopsCount || 0,
-				originCoordinates,
+				optimizedRoute: null,
+				optimizedStopsCount: 0,
+				originCoordinates: null,
 				requiresGeocodedOrigin: true,
-				originGeocoded: Boolean(originCoordinates)
+				originGeocoded: false
 			}
 		};
 	} finally {
