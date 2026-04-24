@@ -354,6 +354,8 @@ async function fetchProductsByProfessional(client, idProfessionnel, idEntreprise
  * /products:
  *   get:
  *     summary: Get paginated visible products
+ *     tags:
+ *       - Products
  *     parameters:
  *       - in: query
  *         name: page
@@ -365,6 +367,20 @@ async function fetchProductsByProfessional(client, idProfessionnel, idEntreprise
  *         schema:
  *           type: integer
  *           default: 9
+ *       - in: query
+ *         name: q
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: natures
+ *         schema:
+ *           type: array
+ *           items:
+ *             type: string
+ *       - in: query
+ *         name: sort
+ *         schema:
+ *           type: string
  *     responses:
  *       200:
  *         description: Paginated products payload
@@ -447,6 +463,8 @@ router.get('/', async (req, res, next) => {
  * /products/professionnel/{idProfessionnel}:
  *   get:
  *     summary: Get products by professionnel ID
+ *     tags:
+ *       - Products
  *     parameters:
  *       - in: path
  *         name: idProfessionnel
@@ -470,6 +488,8 @@ router.get('/', async (req, res, next) => {
  *                     type: string
  *                   price:
  *                     type: number
+ *       400:
+ *         description: Invalid parameters
  */
 router.get('/professionnel/:idProfessionnel', async (req, res, next) => {
 	try {
@@ -490,6 +510,27 @@ router.get('/professionnel/:idProfessionnel', async (req, res, next) => {
 	}
 });
 
+/**
+ * @openapi
+ * /products/{idProduit}:
+ *   get:
+ *     summary: Get a specific product by ID
+ *     tags:
+ *       - Products
+ *     parameters:
+ *       - in: path
+ *         name: idProduit
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Product details
+ *       400:
+ *         description: Invalid product ID
+ *       404:
+ *         description: Product not found
+ */
 router.get('/:idProduit', async (req, res, next) => {
 	try {
 		const idProduit = Number(req.params.idProduit);
@@ -568,7 +609,66 @@ async function requireProfessionalSession(req, res, next) {
 }
 
 /**
- * Create product for professional (accepts multipart/form-data with `image` or JSON body)
+ * @openapi
+ * /products/professionnel/{idProfessionnel}:
+ *   post:
+ *     summary: Create product for professional
+ *     description: Accepts multipart/form-data with `image` or JSON body
+ *     tags:
+ *       - Products
+ *     parameters:
+ *       - in: path
+ *         name: idProfessionnel
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               image:
+ *                 type: string
+ *                 format: binary
+ *               nom:
+ *                 type: string
+ *               prix:
+ *                 type: number
+ *               nature:
+ *                 type: string
+ *               unitaireOuKilo:
+ *                 type: boolean
+ *               bio:
+ *                 type: boolean
+ *               stock:
+ *                 type: integer
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               nom:
+ *                 type: string
+ *               prix:
+ *                 type: number
+ *               nature:
+ *                 type: string
+ *               unitaireOuKilo:
+ *                 type: boolean
+ *               bio:
+ *                 type: boolean
+ *               stock:
+ *                 type: integer
+ *     responses:
+ *       201:
+ *         description: Product created successfully
+ *       400:
+ *         description: Validation error
+ *       401:
+ *         description: Unauthenticated
+ *       403:
+ *         description: Forbidden
  */
 router.post('/professionnel/:idProfessionnel', requireProfessionalSession, singleProductImageUpload, async (req, res, next) => {
 	const idProfessionnel = Number(req.params.idProfessionnel);
@@ -650,7 +750,78 @@ router.post('/professionnel/:idProfessionnel', requireProfessionalSession, singl
 		}
 	});
 
-// Update product
+/**
+ * @openapi
+ * /products/professionnel/{idProfessionnel}/{idProduit}:
+ *   put:
+ *     summary: Update an existing product
+ *     tags:
+ *       - Products
+ *     parameters:
+ *       - in: path
+ *         name: idProfessionnel
+ *         required: true
+ *         schema:
+ *           type: integer
+ *       - in: path
+ *         name: idProduit
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               image:
+ *                 type: string
+ *                 format: binary
+ *               nom:
+ *                 type: string
+ *               prix:
+ *                 type: number
+ *               nature:
+ *                 type: string
+ *               unitaireOuKilo:
+ *                 type: boolean
+ *               bio:
+ *                 type: boolean
+ *               stock:
+ *                 type: integer
+ *               visible:
+ *                 type: boolean
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               nom:
+ *                 type: string
+ *               prix:
+ *                 type: number
+ *               nature:
+ *                 type: string
+ *               unitaireOuKilo:
+ *                 type: boolean
+ *               bio:
+ *                 type: boolean
+ *               stock:
+ *                 type: integer
+ *               visible:
+ *                 type: boolean
+ *     responses:
+ *       200:
+ *         description: Product updated successfully
+ *       400:
+ *         description: Invalid parameters
+ *       401:
+ *         description: Unauthenticated
+ *       403:
+ *         description: Forbidden
+ *       404:
+ *         description: Product not found
+ */
 router.put('/professionnel/:idProfessionnel/:idProduit', requireProfessionalSession, singleProductImageUpload, async (req, res, next) => {
 	const idProfessionnel = Number(req.params.idProfessionnel);
 	const idProduit = Number(req.params.idProduit);
@@ -775,7 +946,36 @@ router.put('/professionnel/:idProfessionnel/:idProduit', requireProfessionalSess
 		}
 	});
 
-// Delete product
+/**
+ * @openapi
+ * /products/professionnel/{idProfessionnel}/{idProduit}:
+ *   delete:
+ *     summary: Delete a specific product
+ *     tags:
+ *       - Products
+ *     parameters:
+ *       - in: path
+ *         name: idProfessionnel
+ *         required: true
+ *         schema:
+ *           type: integer
+ *       - in: path
+ *         name: idProduit
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       204:
+ *         description: Product deleted successfully
+ *       400:
+ *         description: Invalid parameters
+ *       401:
+ *         description: Unauthenticated
+ *       403:
+ *         description: Forbidden
+ *       404:
+ *         description: Product not found
+ */
 router.delete('/professionnel/:idProfessionnel/:idProduit', requireProfessionalSession, async (req, res, next) => {
 	const idProfessionnel = Number(req.params.idProfessionnel);
 	const idProduit = Number(req.params.idProduit);

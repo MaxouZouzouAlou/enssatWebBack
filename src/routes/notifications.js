@@ -21,6 +21,21 @@ async function requireAuth(req, res, next) {
 	}
 }
 
+/**
+ * @openapi
+ * /notifications:
+ *   get:
+ *     summary: Get all notifications for the authenticated user
+ *     tags:
+ *       - Notifications
+ *     responses:
+ *       200:
+ *         description: List of notifications
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Server error
+ */
 router.get('/', requireAuth, async (req, res) => {
 	try {
 		const notifications = await getUserNotifications(req.authSession.user.id);
@@ -31,6 +46,21 @@ router.get('/', requireAuth, async (req, res) => {
 	}
 });
 
+/**
+ * @openapi
+ * /notifications/read-all:
+ *   patch:
+ *     summary: Mark all notifications as read for the authenticated user
+ *     tags:
+ *       - Notifications
+ *     responses:
+ *       200:
+ *         description: All notifications marked as read
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Server error
+ */
 router.patch('/read-all', requireAuth, async (req, res) => {
 	try {
 		await markAllNotificationsRead(req.authSession.user.id);
@@ -41,6 +71,27 @@ router.patch('/read-all', requireAuth, async (req, res) => {
 	}
 });
 
+/**
+ * @openapi
+ * /notifications/{id}:
+ *   delete:
+ *     summary: Delete a notification by ID
+ *     tags:
+ *       - Notifications
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Notification deleted successfully
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Server error
+ */
 router.delete('/:id', requireAuth, async (req, res) => {
 	try {
 		await deleteNotification(req.params.id, req.authSession.user.id);

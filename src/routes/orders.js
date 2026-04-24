@@ -139,6 +139,8 @@ export function createOrdersRouter({
 	 *   post:
 	 *     summary: Validate the current authenticated cart into a persisted order
 	 *     description: Recalculates totals from the current cart and creates `Commande` and `LigneCommande`.
+	 *     tags:
+	 *       - Orders
 	 *     requestBody:
 	 *       required: false
 	 *       content:
@@ -148,8 +150,16 @@ export function createOrdersRouter({
 	 *             properties:
 	 *               modeLivraison:
 	 *                 type: string
+	 *               modePaiement:
+	 *                 type: string
+	 *               relayId:
+	 *                 type: integer
+	 *               adresseLivraison:
+	 *                 type: object
 	 *               voucherId:
 	 *                 type: integer
+	 *               pickupAssignments:
+	 *                 type: object
 	 *     responses:
 	 *       201:
 	 *         description: Order created
@@ -200,6 +210,21 @@ export function createOrdersRouter({
 		}
 	});
 
+	/**
+	 * @openapi
+	 * /orders/checkout/context:
+	 *   get:
+	 *     summary: Get context information for checkout
+	 *     tags:
+	 *       - Orders
+	 *     responses:
+	 *       200:
+	 *         description: Checkout context payload
+	 *       401:
+	 *         description: Unauthenticated
+	 *       404:
+	 *         description: Business profile not found
+	 */
 	router.get('/checkout/context', async (req, res, next) => {
 		try {
 			const context = await requireProfile(req, res);
@@ -218,6 +243,42 @@ export function createOrdersRouter({
 		}
 	});
 
+	/**
+	 * @openapi
+	 * /orders/checkout/preview:
+	 *   post:
+	 *     summary: Preview an order before finalizing
+	 *     tags:
+	 *       - Orders
+	 *     requestBody:
+	 *       required: false
+	 *       content:
+	 *         application/json:
+	 *           schema:
+	 *             type: object
+	 *             properties:
+	 *               modeLivraison:
+	 *                 type: string
+	 *               modePaiement:
+	 *                 type: string
+	 *               relayId:
+	 *                 type: integer
+	 *               adresseLivraison:
+	 *                 type: object
+	 *               voucherId:
+	 *                 type: integer
+	 *               pickupAssignments:
+	 *                 type: object
+	 *     responses:
+	 *       200:
+	 *         description: Order preview
+	 *       401:
+	 *         description: Unauthenticated
+	 *       404:
+	 *         description: Business profile not found
+	 *       409:
+	 *         description: Checkout error
+	 */
 	router.post('/checkout/preview', async (req, res, next) => {
 		try {
 			const context = await requireProfile(req, res);
@@ -245,6 +306,21 @@ export function createOrdersRouter({
 		}
 	});
 
+	/**
+	 * @openapi
+	 * /orders:
+	 *   get:
+	 *     summary: Get a list of previous orders for the authenticated user
+	 *     tags:
+	 *       - Orders
+	 *     responses:
+	 *       200:
+	 *         description: List of orders
+	 *       401:
+	 *         description: Unauthenticated
+	 *       404:
+	 *         description: Business profile not found
+	 */
 	router.get('/', async (req, res, next) => {
 		try {
 			const context = await requireProfile(req, res);
@@ -289,6 +365,21 @@ export function createOrdersRouter({
 		}
 	});
 
+	/**
+	 * @openapi
+	 * /orders/recurring:
+	 *   get:
+	 *     summary: List recurring orders for the authenticated user
+	 *     tags:
+	 *       - Orders
+	 *     responses:
+	 *       200:
+	 *         description: List of recurring orders
+	 *       401:
+	 *         description: Unauthenticated
+	 *       404:
+	 *         description: Business profile not found
+	 */
 	router.get('/recurring', async (req, res, next) => {
 		try {
 			const context = await requireProfile(req, res);
@@ -301,6 +392,35 @@ export function createOrdersRouter({
 		}
 	});
 
+	/**
+	 * @openapi
+	 * /orders/recurring:
+	 *   post:
+	 *     summary: Create a recurring order
+	 *     tags:
+	 *       - Orders
+	 *     requestBody:
+	 *       required: true
+	 *       content:
+	 *         application/json:
+	 *           schema:
+	 *             type: object
+	 *             properties:
+	 *               frequenceJours:
+	 *                 type: integer
+	 *               prochaineExecution:
+	 *                 type: string
+	 *                 format: date
+	 *     responses:
+	 *       201:
+	 *         description: Recurring order created
+	 *       400:
+	 *         description: Bad request
+	 *       401:
+	 *         description: Unauthenticated
+	 *       404:
+	 *         description: Business profile not found
+	 */
 	router.post('/recurring', async (req, res, next) => {
 		try {
 			const context = await requireProfile(req, res);
@@ -316,6 +436,43 @@ export function createOrdersRouter({
 		}
 	});
 
+	/**
+	 * @openapi
+	 * /orders/recurring/{idAuto}:
+	 *   patch:
+	 *     summary: Update a recurring order
+	 *     tags:
+	 *       - Orders
+	 *     parameters:
+	 *       - in: path
+	 *         name: idAuto
+	 *         required: true
+	 *         schema:
+	 *           type: integer
+	 *     requestBody:
+	 *       required: true
+	 *       content:
+	 *         application/json:
+	 *           schema:
+	 *             type: object
+	 *             properties:
+	 *               frequenceJours:
+	 *                 type: integer
+	 *               prochaineExecution:
+	 *                 type: string
+	 *                 format: date
+	 *               actif:
+	 *                 type: boolean
+	 *     responses:
+	 *       200:
+	 *         description: Recurring order updated
+	 *       400:
+	 *         description: Bad request
+	 *       401:
+	 *         description: Unauthenticated
+	 *       404:
+	 *         description: Recurring order not found
+	 */
 	router.patch('/recurring/:idAuto', async (req, res, next) => {
 		try {
 			const context = await requireProfile(req, res);
@@ -331,6 +488,27 @@ export function createOrdersRouter({
 		}
 	});
 
+	/**
+	 * @openapi
+	 * /orders/recurring/{idAuto}:
+	 *   delete:
+	 *     summary: Delete a recurring order
+	 *     tags:
+	 *       - Orders
+	 *     parameters:
+	 *       - in: path
+	 *         name: idAuto
+	 *         required: true
+	 *         schema:
+	 *           type: integer
+	 *     responses:
+	 *       200:
+	 *         description: Recurring order deleted
+	 *       401:
+	 *         description: Unauthenticated
+	 *       404:
+	 *         description: Recurring order not found
+	 */
 	router.delete('/recurring/:idAuto', async (req, res, next) => {
 		try {
 			const context = await requireProfile(req, res);
@@ -346,6 +524,29 @@ export function createOrdersRouter({
 		}
 	});
 
+	/**
+	 * @openapi
+	 * /orders/recurring/{idAuto}/run:
+	 *   post:
+	 *     summary: Manually run a recurring order
+	 *     tags:
+	 *       - Orders
+	 *     parameters:
+	 *       - in: path
+	 *         name: idAuto
+	 *         required: true
+	 *         schema:
+	 *           type: integer
+	 *     responses:
+	 *       200:
+	 *         description: Recurring order executed successfully
+	 *       400:
+	 *         description: Execution error
+	 *       401:
+	 *         description: Unauthenticated
+	 *       404:
+	 *         description: Recurring order not found
+	 */
 	router.post('/recurring/:idAuto/run', async (req, res, next) => {
 		try {
 			const context = await requireProfile(req, res);
@@ -361,6 +562,29 @@ export function createOrdersRouter({
 		}
 	});
 
+	/**
+	 * @openapi
+	 * /orders/{idCommande}:
+	 *   get:
+	 *     summary: Get details of a specific order
+	 *     tags:
+	 *       - Orders
+	 *     parameters:
+	 *       - in: path
+	 *         name: idCommande
+	 *         required: true
+	 *         schema:
+	 *           type: integer
+	 *     responses:
+	 *       200:
+	 *         description: Order details
+	 *       400:
+	 *         description: Invalid order ID
+	 *       401:
+	 *         description: Unauthenticated
+	 *       404:
+	 *         description: Order not found
+	 */
 	router.get('/:idCommande', async (req, res, next) => {
 		try {
 			const context = await requireProfile(req, res);
@@ -521,6 +745,34 @@ export function createOrdersRouter({
 		}
 	});
 
+	/**
+	 * @openapi
+	 * /orders/{idCommande}/facture.pdf:
+	 *   get:
+	 *     summary: Download PDF invoice for a specific order
+	 *     tags:
+	 *       - Orders
+	 *     parameters:
+	 *       - in: path
+	 *         name: idCommande
+	 *         required: true
+	 *         schema:
+	 *           type: integer
+	 *     responses:
+	 *       200:
+	 *         description: PDF Invoice
+	 *         content:
+	 *           application/pdf:
+	 *             schema:
+	 *               type: string
+	 *               format: binary
+	 *       400:
+	 *         description: Invalid order ID
+	 *       401:
+	 *         description: Unauthenticated
+	 *       404:
+	 *         description: Order not found
+	 */
 	router.get('/:idCommande/facture.pdf', async (req, res, next) => {
 		try {
 			const context = await requireProfile(req, res);
