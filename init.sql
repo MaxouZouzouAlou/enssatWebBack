@@ -877,7 +877,7 @@ INSERT INTO `Professionnel` (`idProfessionnel`, `id`) VALUES
 (6, 7),
 (7, 8);
 
-UPDATE `Professionnel` SET description = 'Producteur de fruits et de confitures artisanales ancre dans le Trégor.', photo = 'src/images/producteurs/monique.webp' WHERE idProfessionnel = 1;
+UPDATE `Professionnel` SET description = 'Producteur de fruits et de confitures artisanales ancre dans le Trégor.', photo = 'src/images/producteurs/michel.webp' WHERE idProfessionnel = 1;
 UPDATE `Professionnel` SET description = 'Maraicher local specialise dans les légumes de saison et la vente directe.', photo = 'src/images/producteurs/herve.webp' WHERE idProfessionnel = 2;
 UPDATE `Professionnel` SET description = 'Exploitant de primeurs et de produits transformés issus de la baie de Lannion.', photo = 'src/images/producteurs/bernard.webp' WHERE idProfessionnel = 3;
 UPDATE `Professionnel` SET description = 'Producteur engagé dans les circuits courts, avec une offre variée en ferme et en point de vente.', photo = 'src/images/producteurs/claude.webp' WHERE idProfessionnel = 4;
